@@ -649,7 +649,7 @@ def restock_product(id):
 @role_required('seller')
 def pos_dashboard():
     seller = User.query.get(session['user_id'])
-    products = Product.query.filter_by(seller_id=seller.id, is_active=True, stock>0).all()
+    products = Product.query.filter_by(seller_id=seller.id, is_active=True).filter(Product.stock > 0).all()
     
     # Today's offline sales
     today = datetime.now().date()
