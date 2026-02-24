@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 from functools import wraps
 import math
+import cohere
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
@@ -68,6 +69,17 @@ class Review(db.Model):
     
     reviewer = db.relationship('User', foreign_keys=[reviewer_id])
     reviewed = db.relationship('User', foreign_keys=[reviewed_id])
+
+class Post(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user = db.relationship('User', backref='posts')
+
+# Initialize Cohere
+cohere_api_key = os.environ.get('COHERE_API_KEY')
+co = cohere.Client(cohere_api_key) if cohere_api_key else None
 
 # Helper functions
 def login_required(f):
@@ -396,9 +408,55 @@ def review_user(user_id):
         db.session.commit()
         
         flash('Review submitted successfully!', 'success')
-        return redirect(url_for('index'))
+        return redirect(url_for('community'))
     
     return render_template('review.html', user=reviewed_user)
+
+@app.route('/community', methods=['GET', 'POST'])
+@login_required
+def community():
+    if request.method == 'POST':
+        content = request.form['content']
+        post = Post(user_id=session['user_id'], content=content)
+        db.session.add(post)
+        db.session.commit()
+        flash('Post added to community!', 'success')
+        return redirect(url_for('community'))
+    
+    posts = Post.query.order_by(Post.created_at.desc()).all()
+    # Get all users so people can review them
+    users = User.query.filter(User.id != session['user_id']).all()
+    return render_template('community.html', posts=posts, users=users)
+
+@app.route('/chat', methods=['GET', 'POST'])
+@login_required
+def chat():
+    response_text = None
+    user_message = ""
+    if request.method == 'POST':
+        user_message = request.form['message']
+        if co:
+            try:
+                response = co.chat(
+                    message=user_message,
+                    model="command"
+                )
+                response_text = response.text
+            except Exception as e:
+                response_text = f"Error communicating with AI: {str(e)}"
+        else:
+            response_text = "Cohere API key is not configured."
+            
+    return render_template('chat.html', response=response_text, user_message=user_message)
+
+@app.route('/rider/map/<int:order_id>')
+@role_required('rider')
+def rider_map(order_id):
+    order = Order.query.get_or_404(order_id)
+    if order.rider_id != session['user_id']:
+        flash('Access denied.', 'danger')
+        return redirect(url_for('rider_dashboard'))
+    return render_template('rider_map.html', order=order)
 
 # Initialize database and seed data
 def init_db():
@@ -454,7 +512,72 @@ def init_db():
             db.session.commit()
             print('Database initialized with sample data!')
 
+# ===== AUTO-CREATE TABLES ON STARTUP =====
+# This runs whenever the app starts on Render
+with app.app_context():
+    try:
+        # Create all tables if they don't exist
+        db.create_all()
+        print("✅ Database tables created/verified successfully!")
+        
+        # Check if we need to seed sample data
+        if not User.query.filter_by(username='admin').first():
+            print("📦 Adding sample data...")
+            
+            # Add admin user
+            admin = User(
+                username='admin',
+                email='admin@marketplace.com',
+                password=generate_password_hash('admin123'),
+                role='admin',
+                phone_number='1234567890',
+                location='Main Office'
+            )
+            db.session.add(admin)
+            
+            # Add sample products
+            products = [
+                Product(name='Fresh Apples', description='Crisp and sweet red apples', price=3.99, category='Fruits', 
+                       image_url='https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400', stock=50),
+                Product(name='Organic Bananas', description='Yellow ripe bananas', price=2.49, category='Fruits',
+                       image_url='https://images.unsplash.com/photo-1603833665858-e61d17a86224?w=400', stock=100),
+                Product(name='Fresh Tomatoes', description='Ripe red tomatoes', price=4.99, category='Vegetables',
+                       image_url='https://images.unsplash.com/photo-1546094096-0df4bcaaa337?w=400', stock=75),
+                Product(name='Green Lettuce', description='Fresh crispy lettuce', price=2.99, category='Vegetables',
+                       image_url='https://images.unsplash.com/photo-1622206151226-18ca2c9ab4a1?w=400', stock=60),
+                Product(name='Orange Juice', description='Fresh squeezed orange juice', price=5.99, category='Beverages',
+                       image_url='https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=400', stock=40),
+                Product(name='Fresh Carrots', description='Crunchy orange carrots', price=3.49, category='Vegetables',
+                       image_url='https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?w=400', stock=80),
+                Product(name='Strawberries', description='Sweet red strawberries', price=6.99, category='Fruits',
+                       image_url='https://images.unsplash.com/photo-1464965911861-746a04b4bca6?w=400', stock=45),
+                Product(name='Bell Peppers', description='Colorful bell peppers', price=4.49, category='Vegetables',
+                       image_url='https://images.unsplash.com/photo-1563565375-f3fdfdbefa83?w=400', stock=55),
+            ]
+            
+            for product in products:
+                db.session.add(product)
+            
+            # Add sample rider
+            rider = User(
+                username='rider1',
+                email='rider@marketplace.com',
+                password=generate_password_hash('rider123'),
+                role='rider',
+                phone_number='0987654321',
+                location='Downtown'
+            )
+            db.session.add(rider)
+            
+            db.session.commit()
+            print("✅ Sample data added successfully!")
+        else:
+            print("ℹ️ Database already has data, skipping sample data")
+            
+    except Exception as e:
+        print(f"⚠️ Database initialization error: {e}")
+
 if __name__ == '__main__':
-    init_db()
+    # Don't call init_db() here - it's already called above
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_ENV') == 'development')
