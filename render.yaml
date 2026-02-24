@@ -10,12 +10,11 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        fromDatabase:
-          name: marketplace-db
-          property: connectionString
+        value: postgresql://benfarming_db_user:2TBsWivCFfLXvDkop9WY62CNaxN9WmNl@dpg-d669k18gjchc73fli15g-a/benfarming_db
     autoDeploy: true
 
-databases:
-  - name: marketplace-db
-    databaseName: marketplace
-    user: marketplace_user
+# IMPORTANT: Comment out or remove the databases section
+# databases:
+#   - name: marketplace-db
+#     databaseName: marketplace
+#     user: marketplace_user
