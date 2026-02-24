@@ -29,6 +29,9 @@
                         {% if session.role == 'admin' %}
                             <li class="nav-item"><a class="nav-link" href="{{ url_for('admin_dashboard') }}">Admin</a></li>
                         {% endif %}
+                        {% if session.role == 'seller' %}
+                            <li class="nav-item"><a class="nav-link" href="{{ url_for('seller_dashboard') }}">Seller Dashboard</a></li>
+                        {% endif %}
                         <li class="nav-item"><span class="nav-link">Hi, {{ session.username }}</span></li>
                         <li class="nav-item"><a class="nav-link" href="{{ url_for('logout') }}">Logout</a></li>
                     {% else %}

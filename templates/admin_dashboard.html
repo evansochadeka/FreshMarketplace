@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1 class="mb-4">🛡️ Admin Dashboard</h1>
+<h1 class="mb-4">{% if is_seller %}🏪 Seller Dashboard{% else %}🛡️ Admin Dashboard{% endif %}</h1>
 
 <div class="row mb-4">
     <div class="col-md-3">
@@ -45,9 +45,11 @@
     <li class="nav-item">
         <a class="nav-link" data-bs-toggle="tab" href="#orders">Orders</a>
     </li>
+    {% if not is_seller %}
     <li class="nav-item">
         <a class="nav-link" data-bs-toggle="tab" href="#users">Users</a>
     </li>
+    {% endif %}
 </ul>
 
 <div class="tab-content">
@@ -117,6 +119,7 @@
         </div>
     </div>
 
+    {% if not is_seller %}
     <div id="users" class="tab-pane fade">
         <h3 class="mb-3">Users</h3>
         <div class="table-responsive">
@@ -126,6 +129,7 @@
                         <th>ID</th>
                         <th>Username</th>
                         <th>Email</th>
+                        <th>Phone</th>
                         <th>Role</th>
                         <th>Location</th>
                         <th>Joined</th>
@@ -137,6 +141,7 @@
                         <td>{{ user.id }}</td>
                         <td>{{ user.username }}</td>
                         <td>{{ user.email }}</td>
+                        <td>{{ user.phone_number }}</td>
                         <td><span class="badge bg-primary">{{ user.role }}</span></td>
                         <td>{{ user.location }}</td>
                         <td>{{ user.created_at.strftime('%m/%d/%Y') }}</td>
@@ -146,5 +151,6 @@
             </table>
         </div>
     </div>
+    {% endif %}
 </div>
 {% endblock %}

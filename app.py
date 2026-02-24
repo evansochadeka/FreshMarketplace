@@ -21,7 +21,8 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
-    role = db.Column(db.String(20), nullable=False)  # buyer, rider, admin
+    role = db.Column(db.String(20), nullable=False)  # buyer, rider, admin, seller
+    phone_number = db.Column(db.String(20), nullable=False)
     location = db.Column(db.String(200))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -133,6 +134,7 @@ def register():
         email = request.form['email']
         password = request.form['password']
         role = request.form['role']
+        phone_number = request.form['phone_number']
         location = request.form.get('location', '')
         
         if User.query.filter_by(username=username).first():
@@ -144,6 +146,7 @@ def register():
             email=email,
             password=generate_password_hash(password),
             role=role,
+            phone_number=phone_number,
             location=location
         )
         db.session.add(user)
@@ -171,6 +174,8 @@ def login():
                 return redirect(url_for('admin_dashboard'))
             elif user.role == 'rider':
                 return redirect(url_for('rider_dashboard'))
+            elif user.role == 'seller':
+                return redirect(url_for('seller_dashboard'))
             else:
                 return redirect(url_for('index'))
         
@@ -298,6 +303,19 @@ def update_delivery_status(id):
     flash('Delivery status updated!', 'success')
     return redirect(url_for('rider_dashboard'))
 
+@app.route('/seller/dashboard')
+@role_required('seller')
+def seller_dashboard():
+    products = Product.query.all()
+    orders = Order.query.order_by(Order.created_at.desc()).limit(20).all()
+    stats = {
+        'total_users': 0,
+        'total_products': len(products),
+        'total_orders': len(orders),
+        'pending_orders': sum(1 for o in orders if o.status == 'pending')
+    }
+    return render_template('admin_dashboard.html', stats=stats, users=[], products=products, orders=orders, is_seller=True)
+
 @app.route('/admin/dashboard')
 @role_required('admin')
 def admin_dashboard():
@@ -315,7 +333,7 @@ def admin_dashboard():
     return render_template('admin_dashboard.html', stats=stats, users=users, products=products, orders=orders)
 
 @app.route('/admin/add_product', methods=['GET', 'POST'])
-@role_required('admin')
+@role_required('seller')
 def add_product():
     if request.method == 'POST':
         product = Product(
@@ -335,7 +353,7 @@ def add_product():
     return render_template('add_product.html')
 
 @app.route('/admin/edit_product/<int:id>', methods=['GET', 'POST'])
-@role_required('admin')
+@role_required('seller')
 def edit_product(id):
     product = Product.query.get_or_404(id)
     
@@ -354,7 +372,7 @@ def edit_product(id):
     return render_template('edit_product.html', product=product)
 
 @app.route('/admin/delete_product/<int:id>')
-@role_required('admin')
+@role_required('seller')
 def delete_product(id):
     product = Product.query.get_or_404(id)
     db.session.delete(product)
@@ -394,6 +412,7 @@ def init_db():
                 email='admin@marketplace.com',
                 password=generate_password_hash('admin123'),
                 role='admin',
+                phone_number='1234567890',
                 location='Main Office'
             )
             db.session.add(admin)
@@ -427,6 +446,7 @@ def init_db():
                 email='rider@marketplace.com',
                 password=generate_password_hash('rider123'),
                 role='rider',
+                phone_number='0987654321',
                 location='Downtown'
             )
             db.session.add(rider)
