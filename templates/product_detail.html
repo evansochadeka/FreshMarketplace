@@ -1,28 +1,133 @@
 {% extends "base.html" %}
 
+{% block title %}{{ product.name }} - Fresh Marketplace{% endblock %}
+
 {% block content %}
 <div class="row">
     <div class="col-md-6">
-        <img src="{{ product.image_url }}" class="img-fluid rounded" alt="{{ product.name }}">
+        <img src="{{ product.image_url }}" class="img-fluid rounded" alt="{{ product.name }}" style="max-height: 400px; width: 100%; object-fit: cover;">
     </div>
     <div class="col-md-6">
-        <h1>{{ product.name }}</h1>
-        <span class="badge bg-success mb-3">{{ product.category }}</span>
-        <h2 class="text-success">Kes{{ "%.2f"|format(product.price) }}</h2>
+        <div class="d-flex align-items-center mb-2">
+            <h1 class="mb-0">{{ product.name }}</h1>
+            <span class="badge bg-success ms-2">{{ product.category }}</span>
+        </div>
+        
+        <!-- Seller Info -->
+        <div class="d-flex align-items-center mb-3 p-2 bg-light rounded">
+            {% if seller.profile_image %}
+            <img src="{{ seller.profile_image }}" 
+                 class="rounded-circle me-2" 
+                 width="40" height="40" 
+                 style="object-fit: cover;">
+            {% else %}
+            <i class="bi bi-person-circle fs-1 me-2"></i>
+            {% endif %}
+            <div>
+                <small class="text-muted">Sold by</small>
+                <h6 class="mb-0">{{ seller.business_name or seller.username }}</h6>
+            </div>
+            {% if session.user_id and session.user_id != seller.id %}
+            <a href="{{ url_for('chat_with_user', receiver_id=seller.id, product_id=product.id) }}" 
+               class="btn btn-sm btn-outline-success ms-auto">
+                <i class="bi bi-chat-dots"></i> Chat with Seller
+            </a>
+            {% endif %}
+        </div>
+
+        <!-- Price Breakdown -->
+        <div class="mb-3">
+            <h2 class="text-success">Kes {{ "%.2f"|format(product.price) }}</h2>
+            <small class="text-muted">
+                (Base price: Kes {{ "%.2f"|format(product.base_price) }} + 
+                10% rider fee + 10% platform fee)
+            </small>
+        </div>
+
         <p class="lead">{{ product.description }}</p>
-        <p class="text-muted">Available Stock: {{ product.stock }}</p>
+        
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <p class="mb-1"><strong>Available Stock:</strong> {{ product.stock }}</p>
+                <p class="mb-1"><strong>SKU:</strong> {{ product.sku }}</p>
+            </div>
+            <div class="col-md-6">
+                <p class="mb-1"><strong>Category:</strong> {{ product.category }}</p>
+                <p class="mb-1"><strong>Added:</strong> {{ product.created_at.strftime('%Y-%m-%d') }}</p>
+            </div>
+        </div>
         
         {% if session.user_id %}
-        <form method="POST" action="{{ url_for('add_to_cart', id=product.id) }}">
-            <div class="mb-3">
-                <label class="form-label">Quantity:</label>
-                <input type="number" name="quantity" class="form-control" value="1" min="1" max="{{ product.stock }}" style="width: 100px;">
+            {% if product.stock > 0 %}
+            <form method="POST" action="{{ url_for('add_to_cart', id=product.id) }}" class="mb-3">
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label class="form-label">Quantity:</label>
+                        <input type="number" name="quantity" class="form-control" value="1" min="1" max="{{ product.stock }}">
+                    </div>
+                    <div class="col-md-8 d-flex align-items-end">
+                        <button type="submit" class="btn btn-success btn-lg w-100">
+                            <i class="bi bi-cart-plus"></i> Add to Cart
+                        </button>
+                    </div>
+                </div>
+            </form>
+            {% else %}
+            <div class="alert alert-warning">
+                <i class="bi bi-exclamation-triangle"></i> Out of Stock
             </div>
-            <button type="submit" class="btn btn-success btn-lg">Add to Cart</button>
-        </form>
+            {% endif %}
         {% else %}
-        <a href="{{ url_for('login') }}" class="btn btn-success btn-lg">Login to Purchase</a>
+        <a href="{{ url_for('login') }}" class="btn btn-success btn-lg w-100">
+            <i class="bi bi-box-arrow-in-right"></i> Login to Purchase
+        </a>
         {% endif %}
+
+        <!-- Share and Actions -->
+        <div class="d-flex justify-content-between mt-3">
+            <button class="btn btn-outline-secondary btn-sm" onclick="window.print()">
+                <i class="bi bi-printer"></i> Print
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" onclick="shareProduct()">
+                <i class="bi bi-share"></i> Share
+            </button>
+        </div>
     </div>
 </div>
+
+<!-- Related Products Section -->
+{% if related_products %}
+<div class="row mt-5">
+    <div class="col-12">
+        <h3>Related Products</h3>
+        <hr>
+    </div>
+    {% for related in related_products %}
+    <div class="col-md-3 mb-4">
+        <div class="card h-100">
+            <img src="{{ related.image_url }}" class="card-img-top" alt="{{ related.name }}" style="height: 150px; object-fit: cover;">
+            <div class="card-body">
+                <h6 class="card-title">{{ related.name }}</h6>
+                <p class="text-success mb-0">Kes {{ "%.2f"|format(related.price) }}</p>
+                <a href="{{ url_for('product_detail', id=related.id) }}" class="stretched-link"></a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<script>
+function shareProduct() {
+    if (navigator.share) {
+        navigator.share({
+            title: '{{ product.name }}',
+            text: 'Check out this product on Fresh Marketplace!',
+            url: window.location.href
+        });
+    } else {
+        prompt('Copy this link to share:', window.location.href);
+    }
+}
+</script>
 {% endblock %}
