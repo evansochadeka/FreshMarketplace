@@ -13,4 +13,6 @@ services:
         generateValue: true
       - key: DATABASE_URL
         value: postgresql://benfarming_db_user:2TBsWivCFfLXvDkop9WY62CNaxN9WmNl@dpg-d669k18gjchc73fli15g-a/benfarming_db
+      - key: UV_VERSION  # This disables uv
+        value: none
     autoDeploy: true
