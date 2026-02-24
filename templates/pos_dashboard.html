@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mb-4">🛒 Point of Sale (POS) System</h1>
+
+    <div class="row">
+        <!-- Product Grid -->
+        <div class="col-md-8">
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h5>Products</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for product in products %}
+                        <div class="col-md-4 mb-3">
+                            <div class="card product-card" onclick="addToCart({{ product.id }}, '{{ product.name }}', {{ product.price }})">
+                                <img src="{{ product.image_url }}" class="card-img-top" alt="{{ product.name }}" style="height: 100px; object-fit: cover;">
+                                <div class="card-body p-2">
+                                    <h6 class="card-title">{{ product.name }}</h6>
+                                    <p class="card-text">Kes {{ "%.2f"|format(product.price) }}</p>
+                                    <small class="text-muted">Stock: {{ product.stock }}</small>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Today's Sales -->
+            <div class="card">
+                <div class="card-header">
+                    <h5>Today's Transactions</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Receipt #</th>
+                                <th>Customer</th>
+                                <th>Total</th>
+                                <th>Payment</th>
+                                <th>Time</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sale in today_sales %}
+                            <tr>
+                                <td>{{ sale.receipt_number }}</td>
+                                <td>{{ sale.customer_name or 'Walk-in' }}</td>
+                                <td>Kes {{ "%.2f"|format(sale.total) }}</td>
+                                <td>{{ sale.payment_method }}</td>
+                                <td>{{ sale.created_at.strftime('%H:%M') }}</td>
+                                <td>
+                                    <a href="{{ url_for('pos_receipt', receipt_number=sale.receipt_number) }}" class="btn btn-sm btn-info">Receipt</a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cart -->
+        <div class="col-md-4">
+            <div class="card sticky-top" style="top: 20px;">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">Current Sale</h5>
+                </div>
+                <div class="card-body">
+                    <div id="cart-items">
+                        <!-- Cart items will appear here -->
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="mb-3">
+                        <label>Customer Name (optional)</label>
+                        <input type="text" id="customer-name" class="form-control" placeholder="Walk-in customer">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label>Customer Phone (optional)</label>
+                        <input type="text" id="customer-phone" class="form-control">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label>Payment Method</label>
+                        <select id="payment-method" class="form-select">
+                            <option value="cash">Cash</option>
+                            <option value="mpesa">M-PESA</option>
+                            <option value="card">Card</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label>Discount (Kes)</label>
+                        <input type="number" id="discount" class="form-control" value="0" min="0">
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="d-flex justify-content-between mb-2">
+                        <strong>Subtotal:</strong>
+                        <span id="subtotal">Kes 0.00</span>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mb-2">
+                        <strong>Discount:</strong>
+                        <span id="discount-amount">Kes 0.00</span>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between mb-3">
+                        <strong>Total:</strong>
+                        <strong id="total">Kes 0.00</strong>
+                    </div>
+                    
+                    <button class="btn btn-success w-100 mb-2" onclick="processPayment()">
+                        Complete Sale
+                    </button>
+                    
+                    <button class="btn btn-secondary w-100" onclick="clearCart()">
+                        Clear Cart
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.product-card {
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+.product-card:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+</style>
+
+<script>
+let cart = [];
+
+function addToCart(productId, productName, price) {
+    const existing = cart.find(item => item.product_id === productId);
+    if (existing) {
+        existing.quantity++;
+    } else {
+        cart.push({
+            product_id: productId,
+            name: productName,
+            price: price,
+            quantity: 1
+        });
+    }
+    updateCartDisplay();
+}
+
+function updateQuantity(index, change) {
+    cart[index].quantity += change;
+    if (cart[index].quantity <= 0) {
+        cart.splice(index, 1);
+    }
+    updateCartDisplay();
+}
+
+function removeItem(index) {
+    cart.splice(index, 1);
+    updateCartDisplay();
+}
+
+function updateCartDisplay() {
+    const cartDiv = document.getElementById('cart-items');
+    let subtotal = 0;
+    
+    if (cart.length === 0) {
+        cartDiv.innerHTML = '<p class="text-muted">Cart is empty</p>';
+    } else {
+        let html = '';
+        cart.forEach((item, index) => {
+            const itemTotal = item.price * item.quantity;
+            subtotal += itemTotal;
+            html += `
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <strong>${item.name}</strong><br>
+                        <small>Kes ${item.price.toFixed(2)} x ${item.quantity}</small>
+                    </div>
+                    <div>
+                        <span class="me-2">Kes ${itemTotal.toFixed(2)}</span>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="updateQuantity(${index}, -1)">-</button>
+                        <span class="mx-1">${item.quantity}</span>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="updateQuantity(${index}, 1)">+</button>
+                        <button class="btn btn-sm btn-danger" onclick="removeItem(${index})">×</button>
+                    </div>
+                </div>
+            `;
+        });
+        cartDiv.innerHTML = html;
+    }
+    
+    const discount = parseFloat(document.getElementById('discount').value) || 0;
+    const total = subtotal - discount;
+    
+    document.getElementById('subtotal').textContent = `Kes ${subtotal.toFixed(2)}`;
+    document.getElementById('discount-amount').textContent = `Kes ${discount.toFixed(2)}`;
+    document.getElementById('total').textContent = `Kes ${total.toFixed(2)}`;
+}
+
+function clearCart() {
+    cart = [];
+    updateCartDisplay();
+}
+
+function processPayment() {
+    if (cart.length === 0) {
+        alert('Cart is empty!');
+        return;
+    }
+    
+    const data = {
+        cart: cart,
+        customer_name: document.getElementById('customer-name').value,
+        customer_phone: document.getElementById('customer-phone').value,
+        payment_method: document.getElementById('payment-method').value,
+        discount: parseFloat(document.getElementById('discount').value) || 0
+    };
+    
+    fetch('/seller/pos/checkout', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`Sale completed! Receipt #: ${data.receipt_number}`);
+            cart = [];
+            updateCartDisplay();
+            document.getElementById('customer-name').value = '';
+            document.getElementById('customer-phone').value = '';
+            document.getElementById('discount').value = '0';
+            location.reload(); // Refresh to update today's sales
+        } else {
+            alert('Error: ' + data.error);
+        }
+    });
+}
+
+// Update totals when discount changes
+document.getElementById('discount').addEventListener('input', updateCartDisplay);
+</script>
+{% endblock %}
