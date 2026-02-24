@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Chat with {{ receiver.username }} - Fresh Marketplace{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-success text-white d-flex align-items-center">
+                <a href="{{ url_for('inbox') }}" class="text-white me-3">
+                    <i class="bi bi-arrow-left"></i>
+                </a>
+                <div class="d-flex align-items-center">
+                    {% if receiver.profile_image %}
+                    <img src="{{ receiver.profile_image }}" 
+                         class="rounded-circle me-2" 
+                         width="40" height="40" 
+                         style="object-fit: cover;">
+                    {% else %}
+                    <i class="bi bi-person-circle fs-2 me-2"></i>
+                    {% endif %}
+                    <div>
+                        <h5 class="mb-0">{{ receiver.username }}</h5>
+                        <small>{{ receiver.role }}</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Messages -->
+            <div class="card-body" style="height: 400px; overflow-y: auto;" id="chatMessages">
+                {% for msg in messages %}
+                <div class="d-flex mb-3 {% if msg.sender_id == session.user_id %}justify-content-end{% endif %}">
+                    {% if msg.sender_id != session.user_id %}
+                    <div class="flex-shrink-0">
+                        {% if receiver.profile_image %}
+                        <img src="{{ receiver.profile_image }}" 
+                             class="rounded-circle" 
+                             width="35" height="35" 
+                             style="object-fit: cover;">
+                        {% else %}
+                        <i class="bi bi-person-circle fs-4"></i>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    
+                    <div class="mx-2 {% if msg.sender_id == session.user_id %}text-end{% endif %}" 
+                         style="max-width: 70%;">
+                        {% if msg.product %}
+                        <div class="small text-muted mb-1">
+                            Re: <a href="{{ url_for('product_detail', id=msg.product.id) }}" class="text-decoration-none">
+                                {{ msg.product.name }}
+                            </a>
+                        </div>
+                        {% endif %}
+                        <div class="bg-{% if msg.sender_id == session.user_id %}success text-white{% else %}light{% endif %} p-3 rounded">
+                            {{ msg.message }}
+                        </div>
+                        <small class="text-muted">
+                            {{ msg.created_at.strftime('%H:%M, %b %d') }}
+                            {% if msg.is_read and msg.sender_id == session.user_id %}
+                            <i class="bi bi-check2-all text-success ms-1"></i>
+                            {% endif %}
+                        </small>
+                    </div>
+
+                    {% if msg.sender_id == session.user_id %}
+                    <div class="flex-shrink-0">
+                        {% if session.profile_image %}
+                        <img src="{{ session.profile_image }}" 
+                             class="rounded-circle" 
+                             width="35" height="35" 
+                             style="object-fit: cover;">
+                        {% else %}
+                        <i class="bi bi-person-circle fs-4"></i>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Message Input -->
+            <div class="card-footer">
+                {% if product %}
+                <div class="alert alert-info py-2 mb-3">
+                    <small>
+                        <i class="bi bi-chat"></i> 
+                        Chatting about: <strong>{{ product.name }}</strong>
+                        <a href="{{ url_for('product_detail', id=product.id) }}" class="float-end">View Product</a>
+                    </small>
+                </div>
+                {% endif %}
+                
+                <form method="POST" action="{{ url_for('send_message') }}" id="messageForm">
+                    <input type="hidden" name="receiver_id" value="{{ receiver.id }}">
+                    {% if product %}
+                    <input type="hidden" name="product_id" value="{{ product.id }}">
+                    {% endif %}
+                    <div class="input-group">
+                        <input type="text" 
+                               name="message" 
+                               class="form-control" 
+                               placeholder="Type your message..." 
+                               required>
+                        <button class="btn btn-success" type="submit">
+                            <i class="bi bi-send"></i> Send
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Auto-scroll to bottom
+const chatBox = document.getElementById('chatMessages');
+chatBox.scrollTop = chatBox.scrollHeight;
+
+// Auto-refresh every 10 seconds
+setInterval(function() {
+    location.reload();
+}, 10000);
+</script>
+{% endblock %}

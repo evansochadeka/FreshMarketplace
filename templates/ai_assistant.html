@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}AI Assistant - Fresh Marketplace{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h4 class="mb-0">
+                    <i class="bi bi-robot"></i> AI Marketplace Assistant
+                </h4>
+            </div>
+            <div class="card-body">
+                <p class="text-muted text-center mb-4">
+                    Ask me anything about products, recipes, marketplace policies, or get help with your orders!
+                </p>
+                
+                <div class="chat-container mb-4" style="min-height: 300px; max-height: 400px; overflow-y: auto;">
+                    {% if response %}
+                    <div class="d-flex mb-3">
+                        <div class="flex-shrink-0">
+                            <i class="bi bi-person-circle fs-4 text-primary"></i>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <div class="bg-light p-3 rounded">
+                                <strong>You:</strong>
+                                <p class="mb-0">{{ user_message }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex mb-3">
+                        <div class="flex-shrink-0">
+                            <i class="bi bi-robot fs-4 text-success"></i>
+                        </div>
+                        <div class="flex-grow-1 ms-3">
+                            <div class="bg-success bg-opacity-10 p-3 rounded">
+                                <strong class="text-success">AI Assistant:</strong>
+                                <p class="mb-0" style="white-space: pre-wrap;">{{ response }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-5">
+                        <i class="bi bi-robot display-1"></i>
+                        <p class="mt-3">How can I help you today?</p>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <form method="POST" id="chatForm">
+                    <div class="input-group">
+                        <input type="text" 
+                               name="message" 
+                               class="form-control form-control-lg" 
+                               placeholder="Type your question here..." 
+                               value="{{ user_message }}"
+                               required>
+                        <button class="btn btn-success" type="submit">
+                            <i class="bi bi-send"></i> Ask
+                        </button>
+                    </div>
+                </form>
+
+                <div class="mt-3">
+                    <small class="text-muted">
+                        <i class="bi bi-lightbulb"></i> Try asking:
+                    </small>
+                    <div class="d-flex flex-wrap gap-2 mt-2">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="setQuestion('What are your best selling products?')">
+                            Best selling products?
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="setQuestion('How do I track my order?')">
+                            How to track order?
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="setQuestion('What payment methods do you accept?')">
+                            Payment methods?
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="setQuestion('How do I become a seller?')">
+                            Become a seller?
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Help Topics -->
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="bi bi-truck display-4 text-success"></i>
+                        <h5>Delivery</h5>
+                        <p class="small">Free delivery on orders over Kes 1000</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="bi bi-arrow-return-left display-4 text-success"></i>
+                        <h5>Returns</h5>
+                        <p class="small">30-day return policy on all items</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="bi bi-shield-check display-4 text-success"></i>
+                        <h5>Support</h5>
+                        <p class="small">24/7 customer support available</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function setQuestion(question) {
+    document.querySelector('input[name="message"]').value = question;
+    document.getElementById('chatForm').submit();
+}
+</script>
+{% endblock %}

@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}{{ post.title or 'Post' }} - Fresh Marketplace{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 mx-auto">
+        <!-- Main Post -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                    {% if post.user.profile_image %}
+                    <img src="{{ post.user.profile_image }}" 
+                         class="rounded-circle me-2" 
+                         width="50" height="50" 
+                         style="object-fit: cover;">
+                    {% else %}
+                    <i class="bi bi-person-circle fs-1 me-2"></i>
+                    {% endif %}
+                    <div>
+                        <h5 class="mb-0">{{ post.user.username }}</h5>
+                        <small class="text-muted">
+                            {{ post.user.role }} • 
+                            {{ post.created_at.strftime('%Y-%m-%d %H:%M') }}
+                        </small>
+                    </div>
+                    <span class="badge bg-success ms-auto">{{ post.post_type }}</span>
+                </div>
+
+                {% if post.title %}
+                <h4>{{ post.title }}</h4>
+                {% endif %}
+                
+                <p class="lead">{{ post.content }}</p>
+                
+                <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div>
+                        <a href="{{ url_for('like_post', id=post.id) }}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-hand-thumbs-up"></i> {{ post.likes }} Likes
+                        </a>
+                    </div>
+                    <small class="text-muted">
+                        <i class="bi bi-chat"></i> {{ comments|length }} Comments
+                    </small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comments Section -->
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">Comments</h5>
+            </div>
+            <div class="card-body">
+                <!-- Comment Form -->
+                <form method="POST" class="mb-4">
+                    <div class="input-group">
+                        <input type="text" name="content" class="form-control" 
+                               placeholder="Write a comment..." required>
+                        <button class="btn btn-success" type="submit">
+                            <i class="bi bi-send"></i> Post
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Comments List -->
+                {% for comment in comments %}
+                <div class="d-flex mb-3">
+                    {% if comment.user.profile_image %}
+                    <img src="{{ comment.user.profile_image }}" 
+                         class="rounded-circle me-2" 
+                         width="35" height="35" 
+                         style="object-fit: cover;">
+                    {% else %}
+                    <i class="bi bi-person-circle fs-4 me-2"></i>
+                    {% endif %}
+                    <div class="flex-grow-1">
+                        <div class="bg-light p-2 rounded">
+                            <strong>{{ comment.user.username }}</strong>
+                            <small class="text-muted ms-2">
+                                {{ comment.created_at.strftime('%Y-%m-%d %H:%M') }}
+                            </small>
+                            <p class="mb-0 mt-1">{{ comment.content }}</p>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-center text-muted py-3">No comments yet. Be the first to comment!</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Back Button -->
+        <div class="text-center mt-3">
+            <a href="{{ url_for('community') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Back to Community
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
