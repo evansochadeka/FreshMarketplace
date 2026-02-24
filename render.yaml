@@ -2,19 +2,15 @@ services:
   - type: web
     name: marketplace-app
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: |
+      python -m pip install --upgrade pip
+      pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.9  # Changed from 3.11.0 to 3.11.9 (fully qualified)
+        value: 3.11.9
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
         value: postgresql://benfarming_db_user:2TBsWivCFfLXvDkop9WY62CNaxN9WmNl@dpg-d669k18gjchc73fli15g-a/benfarming_db
     autoDeploy: true
-
-# IMPORTANT: Comment out or remove the databases section
-# databases:
-#   - name: marketplace-db
-#     databaseName: marketplace
-#     user: marketplace_user
