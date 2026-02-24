@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">My Orders</h1>
+
+{% if orders %}
+<div class="row">
+    {% for order in orders %}
+    <div class="col-md-6 mb-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-2">
+                    <h5 class="card-title">Order #{{ order.id }}</h5>
+                    <span class="badge 
+                        {% if order.status == 'pending' %}bg-warning
+                        {% elif order.status == 'in_transit' %}bg-info
+                        {% elif order.status == 'completed' %}bg-success
+                        {% endif %}">{{ order.status }}</span>
+                </div>
+                <p class="text-muted small">{{ order.created_at.strftime('%B %d, %Y %I:%M %p') }}</p>
+                <p><strong>Total:</strong> ${{ "%.2f"|format(order.total) }}</p>
+                <p><strong>Delivery Address:</strong> {{ order.delivery_address }}</p>
+                {% if order.rider %}
+                <p><strong>Rider:</strong> {{ order.rider.username }}</p>
+                {% endif %}
+                <hr>
+                <h6>Items:</h6>
+                <ul class="list-unstyled">
+                    {% for item in order.items %}
+                    <li>{{ item.product.name }} x {{ item.quantity }} - ${{ "%.2f"|format(item.price * item.quantity) }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">
+    You haven't placed any orders yet. <a href="{{ url_for('products') }}">Start shopping</a>
+</div>
+{% endif %}
+{% endblock %}

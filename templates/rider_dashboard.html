@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">🚴 Rider Dashboard</h1>
+
+<div class="alert alert-info">
+    <strong>Your Deliveries:</strong> {{ deliveries|length }} total orders assigned
+</div>
+
+{% if deliveries %}
+<div class="row">
+    {% for order in deliveries %}
+    <div class="col-md-6 mb-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-2">
+                    <h5 class="card-title">Order #{{ order.id }}</h5>
+                    <span class="badge 
+                        {% if order.status == 'pending' %}bg-warning
+                        {% elif order.status == 'in_transit' %}bg-info
+                        {% elif order.status == 'completed' %}bg-success
+                        {% endif %}">{{ order.status }}</span>
+                </div>
+                <p class="text-muted small">{{ order.created_at.strftime('%B %d, %Y %I:%M %p') }}</p>
+                <p><strong>Customer:</strong> {{ order.user.username }}</p>
+                <p><strong>Delivery Address:</strong> {{ order.delivery_address }}</p>
+                <p><strong>Total:</strong> ${{ "%.2f"|format(order.total) }}</p>
+                
+                <hr>
+                <h6>Items:</h6>
+                <ul class="list-unstyled small">
+                    {% for item in order.items %}
+                    <li>{{ item.product.name }} x {{ item.quantity }}</li>
+                    {% endfor %}
+                </ul>
+                
+                {% if order.status != 'completed' %}
+                <form method="POST" action="{{ url_for('update_delivery_status', id=order.id) }}">
+                    <select name="status" class="form-select mb-2" required>
+                        <option value="pending" {% if order.status == 'pending' %}selected{% endif %}>Pending</option>
+                        <option value="in_transit" {% if order.status == 'in_transit' %}selected{% endif %}>In Transit</option>
+                        <option value="completed" {% if order.status == 'completed' %}selected{% endif %}>Completed</option>
+                    </select>
+                    <button type="submit" class="btn btn-primary w-100">Update Status</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">
+    No deliveries assigned yet. Orders will appear here automatically.
+</div>
+{% endif %}
+{% endblock %}

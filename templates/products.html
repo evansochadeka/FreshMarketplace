@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1 class="mb-4">All Products</h1>
+
+<div class="row mb-4">
+    <div class="col-md-8">
+        <form method="GET" class="d-flex">
+            <input type="text" name="search" class="form-control me-2" placeholder="Search products..." value="{{ request.args.get('search', '') }}">
+            <button type="submit" class="btn btn-success">Search</button>
+        </form>
+    </div>
+    <div class="col-md-4">
+        <select class="form-select" onchange="window.location.href='?category='+this.value">
+            <option value="">All Categories</option>
+            {% for cat in categories %}
+            <option value="{{ cat }}" {% if request.args.get('category') == cat %}selected{% endif %}>{{ cat }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</div>
+
+<div class="row">
+    {% for product in products %}
+    <div class="col-md-3 mb-4">
+        <div class="card h-100">
+            <img src="{{ product.image_url }}" class="card-img-top" alt="{{ product.name }}" style="height: 200px; object-fit: cover;">
+            <div class="card-body">
+                <h5 class="card-title">{{ product.name }}</h5>
+                <span class="badge bg-secondary mb-2">{{ product.category }}</span>
+                <p class="card-text text-muted small">{{ product.description[:50] }}...</p>
+                <p class="text-muted small">Stock: {{ product.stock }}</p>
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="h5 text-success mb-0">${{ "%.2f"|format(product.price) }}</span>
+                    <a href="{{ url_for('product_detail', id=product.id) }}" class="btn btn-sm btn-success">View</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
