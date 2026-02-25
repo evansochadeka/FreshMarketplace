@@ -1,6 +1,22 @@
 {% extends "base.html" %}
 
 {% block content %}
+<!-- Floating Chat and AI Icons -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1000; right: 20px; bottom: 20px;">
+    <!-- AI Assistant Icon -->
+    <div class="mb-2 text-end">
+        <a href="{{ url_for('ai_assistant') }}" class="btn btn-success rounded-circle p-3 shadow-lg" style="width: 60px; height: 60px;" title="AI Assistant">
+            <i class="bi bi-robot fs-3"></i>
+        </a>
+    </div>
+    <!-- Live Chat Icon -->
+    <div class="text-end">
+        <button class="btn btn-primary rounded-circle p-3 shadow-lg" style="width: 60px; height: 60px;" onclick="openLiveChat()" title="Live Chat">
+            <i class="bi bi-chat-dots fs-3"></i>
+        </button>
+    </div>
+</div>
+
 <!-- Hero Carousel with Beautiful Grocery Images -->
 <div class="hero-section position-relative mb-5">
     <div id="groceryCarousel" class="carousel slide" data-bs-ride="carousel">
@@ -121,24 +137,37 @@
         <h2 class="display-6 fw-bold">Featured Products</h2>
         <p class="text-muted">Hand-picked just for you</p>
     </div>
-    {% for product in products %}
-    <div class="col-md-3 mb-4">
-        <div class="card h-100 product-card border-0 shadow-sm">
-            <img src="{{ product.image_url }}" class="card-img-top" alt="{{ product.name }}" style="height: 200px; object-fit: cover;">
-            <div class="card-body">
-                <h5 class="card-title fw-bold">{{ product.name }}</h5>
-                <p class="card-text text-muted small">{{ product.description[:60] }}...</p>
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <span class="h5 text-success mb-0 fw-bold">Kes {{ "%.2f"|format(product.price) }}</span>
-                        <small class="text-muted d-block"><small>incl. fees</small></small>
+    {% if products %}
+        {% for product in products %}
+        <div class="col-md-3 mb-4">
+            <div class="card h-100 product-card border-0 shadow-sm">
+                <img src="{{ product.image_url }}" class="card-img-top" alt="{{ product.name }}" style="height: 200px; object-fit: cover;">
+                <div class="card-body">
+                    <h5 class="card-title fw-bold">{{ product.name }}</h5>
+                    <p class="card-text text-muted small">{{ product.description[:60] }}...</p>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="h5 text-success mb-0 fw-bold">Kes {{ "%.2f"|format(product.price) }}</span>
+                            <small class="text-muted d-block"><small>incl. fees</small></small>
+                        </div>
+                        <a href="{{ url_for('product_detail', id=product.id) }}" class="btn btn-sm btn-success">View</a>
                     </div>
-                    <a href="{{ url_for('product_detail', id=product.id) }}" class="btn btn-sm btn-success">View</a>
                 </div>
             </div>
         </div>
-    </div>
-    {% endfor %}
+        {% endfor %}
+    {% else %}
+        <div class="col-12 text-center py-5">
+            <i class="bi bi-box-seam display-1 text-muted"></i>
+            <h3 class="mt-3">No Products Yet</h3>
+            <p class="text-muted">Check back soon for fresh products!</p>
+            {% if session.role == 'seller' or session.role == 'admin' %}
+            <a href="{{ url_for('add_product') }}" class="btn btn-success mt-3">
+                <i class="bi bi-plus-circle"></i> Add Your First Product
+            </a>
+            {% endif %}
+        </div>
+    {% endif %}
 </div>
 
 <!-- Why Choose Us Section -->
@@ -188,9 +217,9 @@
                         <p class="mb-0 opacity-75">Subscribe to our newsletter and get 10% off your first order</p>
                     </div>
                     <div class="col-md-5">
-                        <form class="d-flex">
-                            <input type="email" class="form-control me-2" placeholder="Your email" required>
-                            <button class="btn btn-light text-success fw-bold">Subscribe</button>
+                        <form class="d-flex" id="newsletterForm">
+                            <input type="email" class="form-control me-2" placeholder="Your email" required id="newsletterEmail">
+                            <button type="submit" class="btn btn-light text-success fw-bold" onclick="subscribeNewsletter(event)">Subscribe</button>
                         </form>
                     </div>
                 </div>
@@ -226,5 +255,34 @@
     align-items: center;
     justify-content: center;
 }
+/* Floating Icons Animation */
+.position-fixed .btn {
+    transition: all 0.3s ease;
+}
+.position-fixed .btn:hover {
+    transform: scale(1.1);
+}
 </style>
+
+<script>
+function openLiveChat() {
+    {% if session.user_id %}
+        // If logged in, open general chat or support
+        window.location.href = "{{ url_for('inbox') }}";
+    {% else %}
+        // If not logged in, redirect to login
+        alert('Please log in to use live chat');
+        window.location.href = "{{ url_for('login') }}";
+    {% endif %}
+}
+
+function subscribeNewsletter(event) {
+    event.preventDefault();
+    const email = document.getElementById('newsletterEmail').value;
+    if (email) {
+        alert('Thank you for subscribing! You will receive fresh deals soon.');
+        document.getElementById('newsletterForm').reset();
+    }
+}
+</script>
 {% endblock %}
