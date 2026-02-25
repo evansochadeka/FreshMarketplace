@@ -27,7 +27,7 @@
             </div>
 
             <!-- Chat Messages -->
-            <div class="card-body" style="height: 400px; overflow-y: auto;" id="chatMessages">
+            <div class="card-body" style="height: 400px; overflow-y: auto; background-color: #f8f9fa;" id="chatMessages">
                 {% for msg in messages %}
                 <div class="d-flex mb-3 {% if msg.sender_id == session.user_id %}justify-content-end{% endif %}">
                     {% if msg.sender_id != session.user_id %}
@@ -55,10 +55,10 @@
                         <div class="bg-{% if msg.sender_id == session.user_id %}success text-white{% else %}light{% endif %} p-3 rounded">
                             {{ msg.message }}
                         </div>
-                        <small class="text-muted">
+                        <small class="text-muted d-block mt-1">
                             {{ msg.created_at.strftime('%H:%M, %b %d') }}
                             {% if msg.is_read and msg.sender_id == session.user_id %}
-                            <i class="bi bi-check2-all text-success ms-1"></i>
+                            <i class="bi bi-check2-all text-success ms-1"></i> Read
                             {% endif %}
                         </small>
                     </div>
@@ -101,8 +101,9 @@
                                name="message" 
                                class="form-control" 
                                placeholder="Type your message..." 
-                               required>
-                        <button class="btn btn-success" type="submit">
+                               required
+                               id="messageInput">
+                        <button class="btn btn-success" type="submit" id="sendButton">
                             <i class="bi bi-send"></i> Send
                         </button>
                     </div>
@@ -117,9 +118,25 @@
 const chatBox = document.getElementById('chatMessages');
 chatBox.scrollTop = chatBox.scrollHeight;
 
-// Auto-refresh every 10 seconds
-setInterval(function() {
-    location.reload();
+// Auto-refresh every 10 seconds (for new messages)
+let refreshInterval = setInterval(function() {
+    // Only refresh if page is visible
+    if (!document.hidden) {
+        location.reload();
+    }
 }, 10000);
+
+// Clear interval on page unload
+window.addEventListener('beforeunload', function() {
+    clearInterval(refreshInterval);
+});
+
+// Send message on Enter key
+document.getElementById('messageInput').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        document.getElementById('sendButton').click();
+    }
+});
 </script>
 {% endblock %}
