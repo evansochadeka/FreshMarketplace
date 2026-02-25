@@ -42,6 +42,13 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 os.makedirs(os.path.join(app.root_path, UPLOAD_FOLDER), exist_ok=True)
 os.makedirs(os.path.join(app.root_path, 'static/images'), exist_ok=True)
 
+# Create default profile image if it doesn't exist
+default_profile_path = os.path.join(app.root_path, 'static/images/default-profile.png')
+if not os.path.exists(default_profile_path):
+    # Create a simple 1x1 transparent PNG
+    with open(default_profile_path, 'wb') as f:
+        f.write(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0bIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\x0d\n\x08\xb4\x00\x00\x00\x00IEND\xaeB`\x82')
+
 db = SQLAlchemy(app)
 
 # ===== MODELS =====
@@ -65,16 +72,19 @@ class User(db.Model):
     is_online = db.Column(db.Boolean, default=False)
     
     # Relationships
-    products = db.relationship('Product', backref='seller', lazy=True, cascade='all, delete-orphan')
-    sales = db.relationship('Sale', backref='seller', foreign_keys='Sale.seller_id', lazy=True)
-    offline_sales = db.relationship('OfflineSale', backref='seller', lazy=True)
-    customers = db.relationship('Customer', backref='seller', lazy=True)
-    locations = db.relationship('UserLocation', backref='user', lazy=True, order_by='UserLocation.timestamp.desc()')
-    sent_messages = db.relationship('Message', foreign_keys='Message.sender_id', backref='sender', lazy=True)
-    received_messages = db.relationship('Message', foreign_keys='Message.receiver_id', backref='receiver', lazy=True)
-    posts = db.relationship('Post', backref='author', lazy=True)
-    reviews_given = db.relationship('Review', foreign_keys='Review.reviewer_id', backref='reviewer', lazy=True)
-    reviews_received = db.relationship('Review', foreign_keys='Review.reviewed_id', backref='reviewed', lazy=True)
+    products = db.relationship('Product', back_populates='seller', lazy=True, cascade='all, delete-orphan')
+    sales = db.relationship('Sale', back_populates='seller', foreign_keys='Sale.seller_id', lazy=True)
+    offline_sales = db.relationship('OfflineSale', back_populates='seller', lazy=True)
+    customers = db.relationship('Customer', back_populates='seller', lazy=True)
+    locations = db.relationship('UserLocation', back_populates='user', lazy=True, cascade='all, delete-orphan')
+    sent_messages = db.relationship('Message', foreign_keys='Message.sender_id', back_populates='sender', lazy=True, cascade='all, delete-orphan')
+    received_messages = db.relationship('Message', foreign_keys='Message.receiver_id', back_populates='receiver', lazy=True, cascade='all, delete-orphan')
+    posts = db.relationship('Post', back_populates='author', lazy=True, cascade='all, delete-orphan')
+    reviews_given = db.relationship('Review', foreign_keys='Review.reviewer_id', back_populates='reviewer', lazy=True, cascade='all, delete-orphan')
+    reviews_received = db.relationship('Review', foreign_keys='Review.reviewed_id', back_populates='reviewed', lazy=True, cascade='all, delete-orphan')
+    initiated_calls = db.relationship('VideoCall', foreign_keys='VideoCall.initiator_id', back_populates='initiator', lazy=True)
+    received_calls = db.relationship('VideoCall', foreign_keys='VideoCall.receiver_id', back_populates='receiver', lazy=True)
+    inventory_logs = db.relationship('InventoryLog', back_populates='seller', lazy=True)
 
 class Product(db.Model):
     __tablename__ = 'product'
@@ -98,9 +108,10 @@ class Product(db.Model):
     virtual_tour_url = db.Column(db.String(500))
     
     # Relationships
-    order_items = db.relationship('OrderItem', backref='product', lazy=True)
-    reviews = db.relationship('Review', backref='product', lazy=True)
-    inventory_logs = db.relationship('InventoryLog', backref='product', lazy=True)
+    seller = db.relationship('User', back_populates='products')
+    order_items = db.relationship('OrderItem', back_populates='product', lazy=True, cascade='all, delete-orphan')
+    reviews = db.relationship('Review', back_populates='product', lazy=True, cascade='all, delete-orphan')
+    inventory_logs = db.relationship('InventoryLog', back_populates='product', lazy=True, cascade='all, delete-orphan')
 
 class Order(db.Model):
     __tablename__ = 'order'
@@ -122,11 +133,12 @@ class Order(db.Model):
     completed_at = db.Column(db.DateTime)
     
     # Relationships
-    user = db.relationship('User', foreign_keys=[user_id], backref='orders')
-    rider = db.relationship('User', foreign_keys=[rider_id], backref='deliveries')
+    user = db.relationship('User', foreign_keys=[user_id], backref='user_orders')
+    rider = db.relationship('User', foreign_keys=[rider_id], backref='rider_deliveries')
     seller = db.relationship('User', foreign_keys=[seller_id], backref='seller_orders')
-    items = db.relationship('OrderItem', backref='order', lazy=True, cascade='all, delete-orphan')
-    tracking = db.relationship('OrderTracking', backref='order', lazy=True, cascade='all, delete-orphan')
+    items = db.relationship('OrderItem', back_populates='order', lazy=True, cascade='all, delete-orphan')
+    tracking = db.relationship('OrderTracking', back_populates='order', lazy=True, cascade='all, delete-orphan')
+    reviews = db.relationship('Review', back_populates='order', lazy=True, cascade='all, delete-orphan')
 
 class OrderItem(db.Model):
     __tablename__ = 'order_item'
@@ -139,6 +151,8 @@ class OrderItem(db.Model):
     seller_price = db.Column(db.Float, nullable=False)
     
     # Relationships
+    order = db.relationship('Order', back_populates='items')
+    product = db.relationship('Product', back_populates='order_items')
     seller = db.relationship('User', foreign_keys=[seller_id])
 
 class Sale(db.Model):
@@ -156,6 +170,11 @@ class Sale(db.Model):
     sale_date = db.Column(db.DateTime, default=datetime.utcnow)
     payment_method = db.Column(db.String(50))
     notes = db.Column(db.Text)
+    
+    # Relationships
+    seller = db.relationship('User', back_populates='sales')
+    product = db.relationship('Product')
+    customer = db.relationship('Customer', back_populates='purchases')
 
 class OfflineSale(db.Model):
     __tablename__ = 'offline_sale'
@@ -172,6 +191,9 @@ class OfflineSale(db.Model):
     status = db.Column(db.String(20), default='completed')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     receipt_number = db.Column(db.String(50), unique=True)
+    
+    # Relationships
+    seller = db.relationship('User', back_populates='offline_sales')
 
 class Customer(db.Model):
     __tablename__ = 'customer'
@@ -187,6 +209,10 @@ class Customer(db.Model):
     last_visit = db.Column(db.DateTime)
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    seller = db.relationship('User', back_populates='customers')
+    purchases = db.relationship('Sale', back_populates='customer', lazy=True)
 
 class Review(db.Model):
     __tablename__ = 'review'
@@ -198,6 +224,12 @@ class Review(db.Model):
     rating = db.Column(db.Integer, nullable=False)
     comment = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    reviewer = db.relationship('User', foreign_keys=[reviewer_id], back_populates='reviews_given')
+    reviewed = db.relationship('User', foreign_keys=[reviewed_id], back_populates='reviews_received')
+    product = db.relationship('Product', back_populates='reviews')
+    order = db.relationship('Order', back_populates='reviews')
 
 class Post(db.Model):
     __tablename__ = 'post'
@@ -211,8 +243,8 @@ class Post(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    user = db.relationship('User', backref='posts')
-    comments = db.relationship('Comment', backref='post', lazy=True, cascade='all, delete-orphan')
+    author = db.relationship('User', back_populates='posts')
+    comments = db.relationship('Comment', back_populates='post', lazy=True, cascade='all, delete-orphan')
 
 class Comment(db.Model):
     __tablename__ = 'comment'
@@ -222,6 +254,8 @@ class Comment(db.Model):
     content = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
+    # Relationships
+    post = db.relationship('Post', back_populates='comments')
     user = db.relationship('User')
 
 class Message(db.Model):
@@ -234,6 +268,9 @@ class Message(db.Model):
     is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
+    # Relationships
+    sender = db.relationship('User', foreign_keys=[sender_id], back_populates='sent_messages')
+    receiver = db.relationship('User', foreign_keys=[receiver_id], back_populates='received_messages')
     product = db.relationship('Product')
 
 class UserLocation(db.Model):
@@ -244,6 +281,9 @@ class UserLocation(db.Model):
     longitude = db.Column(db.Float, nullable=False)
     accuracy = db.Column(db.Float)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    user = db.relationship('User', back_populates='locations')
 
 class OrderTracking(db.Model):
     __tablename__ = 'order_tracking'
@@ -254,6 +294,9 @@ class OrderTracking(db.Model):
     status = db.Column(db.String(20))
     message = db.Column(db.String(200))
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    order = db.relationship('Order', back_populates='tracking')
 
 class VideoCall(db.Model):
     __tablename__ = 'video_call'
@@ -267,6 +310,12 @@ class VideoCall(db.Model):
     ended_at = db.Column(db.DateTime)
     ai_assistant_active = db.Column(db.Boolean, default=False)
     recording_enabled = db.Column(db.Boolean, default=False)
+    
+    # Relationships
+    initiator = db.relationship('User', foreign_keys=[initiator_id], back_populates='initiated_calls')
+    receiver = db.relationship('User', foreign_keys=[receiver_id], back_populates='received_calls')
+    product = db.relationship('Product')
+    messages = db.relationship('VideoCallMessage', back_populates='call', lazy=True, cascade='all, delete-orphan')
 
 class VideoCallMessage(db.Model):
     __tablename__ = 'video_call_message'
@@ -276,6 +325,10 @@ class VideoCallMessage(db.Model):
     message = db.Column(db.Text)
     is_ai = db.Column(db.Boolean, default=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    call = db.relationship('VideoCall', back_populates='messages')
+    sender = db.relationship('User')
 
 class InventoryLog(db.Model):
     __tablename__ = 'inventory_log'
@@ -288,6 +341,10 @@ class InventoryLog(db.Model):
     reason = db.Column(db.String(100))
     reference_id = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    product = db.relationship('Product', back_populates='inventory_logs')
+    seller = db.relationship('User', back_populates='inventory_logs')
 
 # ===== HELPER FUNCTIONS =====
 
@@ -347,8 +404,9 @@ def log_inventory_change(product_id, seller_id, previous_stock, new_stock, reaso
         )
         db.session.add(log)
         db.session.commit()
-    except:
+    except Exception as e:
         db.session.rollback()
+        logger.error(f"Inventory log error: {e}")
 
 def generate_receipt_number():
     return f"REC-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
@@ -504,7 +562,7 @@ def logout():
 @app.route('/')
 def index():
     try:
-        products = Product.query.filter_by(is_active=True).order_by(Product.created_at.desc()).limit(12).all()
+        products = Product.query.filter_by(is_active=True).order_by(Product.created_at.desc()).limit(8).all()
         return render_template('index.html', products=products)
     except Exception as e:
         logger.error(f"Index error: {e}")
@@ -563,26 +621,26 @@ def seller_dashboard():
         today_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.total_price), 0)).filter(
             Sale.seller_id == seller.id,
             db.func.date(Sale.sale_date) == today
-        ).scalar()
+        ).scalar() or 0
         
         # This week's sales
         week_start = today - timedelta(days=today.weekday())
         week_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.total_price), 0)).filter(
             Sale.seller_id == seller.id,
             Sale.sale_date >= week_start
-        ).scalar()
+        ).scalar() or 0
         
         # This month's sales
         month_start = today.replace(day=1)
         month_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.total_price), 0)).filter(
             Sale.seller_id == seller.id,
             Sale.sale_date >= month_start
-        ).scalar()
+        ).scalar() or 0
         
         # Total sales
         total_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.total_price), 0)).filter(
             Sale.seller_id == seller.id
-        ).scalar()
+        ).scalar() or 0
         
         # Recent orders
         recent_orders = Order.query.filter_by(seller_id=seller.id).order_by(Order.created_at.desc()).limit(10).all()
@@ -605,10 +663,10 @@ def seller_dashboard():
         
         stats = {
             'total_products': len(products),
-            'total_sales': float(total_sales or 0),
-            'today_sales': float(today_sales or 0),
-            'week_sales': float(week_sales or 0),
-            'month_sales': float(month_sales or 0),
+            'total_sales': float(total_sales),
+            'today_sales': float(today_sales),
+            'week_sales': float(week_sales),
+            'month_sales': float(month_sales),
             'low_stock_count': len(low_stock_products),
             'unread_messages': unread_messages
         }
@@ -665,7 +723,7 @@ def add_product():
             video_call_enabled = request.form.get('video_call_enabled') == 'on'
             virtual_tour_url = request.form.get('virtual_tour_url', '')
             
-            # Calculate price with fees (10% rider + 10% platform)
+            # Calculate price with fees
             final_price, rider_fee, platform_fee = calculate_price_with_fees(base_price)
             
             # Handle image upload
@@ -793,6 +851,7 @@ def delete_product(id):
         
         flash('Product deleted successfully!', 'success')
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Delete product error: {e}")
         flash('Error deleting product.', 'danger')
     
@@ -2109,6 +2168,9 @@ def admin_dashboard():
         total_platform_fees = db.session.query(db.func.coalesce(db.func.sum(Order.platform_fee), 0)).scalar()
         total_rider_fees = db.session.query(db.func.coalesce(db.func.sum(Order.rider_fee), 0)).scalar()
         
+        # Active calls
+        active_calls = VideoCall.query.filter_by(status='active').count()
+        
         stats = {
             'total_users': total_users,
             'total_sellers': total_sellers,
@@ -2120,7 +2182,8 @@ def admin_dashboard():
             'completed_orders': completed_orders,
             'total_revenue': float(total_revenue or 0),
             'total_platform_fees': float(total_platform_fees or 0),
-            'total_rider_fees': float(total_rider_fees or 0)
+            'total_rider_fees': float(total_rider_fees or 0),
+            'active_calls': active_calls
         }
         
         return render_template('admin_dashboard.html', 
@@ -2168,29 +2231,29 @@ def handle_disconnect():
 @socketio.on('join_call')
 def handle_join_call(data):
     call_id = data.get('call_id')
-    if call_id:
+    if call_id and 'user_id' in session:
         room = f'call_{call_id}'
         join_room(room)
         emit('user_joined', {
-            'user_id': session.get('user_id'),
-            'username': session.get('username')
+            'user_id': session['user_id'],
+            'username': session['username']
         }, room=room)
 
 @socketio.on('leave_call')
 def handle_leave_call(data):
     call_id = data.get('call_id')
-    if call_id:
+    if call_id and 'user_id' in session:
         room = f'call_{call_id}'
         leave_room(room)
         emit('user_left', {
-            'user_id': session.get('user_id'),
-            'username': session.get('username')
+            'user_id': session['user_id'],
+            'username': session['username']
         }, room=room)
 
 @socketio.on('track_order')
 def handle_track_order(data):
     order_id = data.get('order_id')
-    if order_id:
+    if order_id and 'user_id' in session:
         room = f'order_{order_id}'
         join_room(room)
 
@@ -2240,22 +2303,54 @@ def init_db():
             )
             db.session.add(rider)
             
+            # Add sample buyer
+            buyer = User(
+                username='buyer1',
+                email='buyer@marketplace.com',
+                password=generate_password_hash('buyer123'),
+                role='buyer',
+                phone_number='5559876543',
+                location='Nairobi',
+                profile_image='/static/images/default-profile.png'
+            )
+            db.session.add(buyer)
+            
             db.session.flush()
             
             # Add sample products
             products = [
-                Product(name='Fresh Apples', description='Crisp and sweet red apples', 
+                Product(name='Fresh Apples', description='Crisp and sweet red apples from local farms', 
                        base_price=3.99, category='Fruits', 
                        image_url='https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400', 
                        stock=50, seller_id=seller.id, sku='FRUIT-001', video_call_enabled=True),
-                Product(name='Organic Bananas', description='Yellow ripe bananas', 
+                Product(name='Organic Bananas', description='Yellow ripe bananas, rich in potassium', 
                        base_price=2.49, category='Fruits',
                        image_url='https://images.unsplash.com/photo-1603833665858-e61d17a86224?w=400', 
                        stock=100, seller_id=seller.id, sku='FRUIT-002', video_call_enabled=True),
-                Product(name='Fresh Tomatoes', description='Ripe red tomatoes', 
+                Product(name='Fresh Tomatoes', description='Ripe red tomatoes perfect for salads', 
                        base_price=4.99, category='Vegetables',
                        image_url='https://images.unsplash.com/photo-1546094096-0df4bcaaa337?w=400', 
                        stock=75, seller_id=seller.id, sku='VEG-001', video_call_enabled=True),
+                Product(name='Green Lettuce', description='Fresh crispy lettuce for healthy meals', 
+                       base_price=2.99, category='Vegetables',
+                       image_url='https://images.unsplash.com/photo-1622206151226-18ca2c9ab4a1?w=400', 
+                       stock=60, seller_id=seller.id, sku='VEG-002', video_call_enabled=True),
+                Product(name='Orange Juice', description='Fresh squeezed orange juice, no preservatives', 
+                       base_price=5.99, category='Beverages',
+                       image_url='https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=400', 
+                       stock=40, seller_id=seller.id, sku='BEV-001', video_call_enabled=True),
+                Product(name='Fresh Carrots', description='Crunchy orange carrots rich in vitamin A', 
+                       base_price=3.49, category='Vegetables',
+                       image_url='https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?w=400', 
+                       stock=80, seller_id=seller.id, sku='VEG-003', video_call_enabled=True),
+                Product(name='Strawberries', description='Sweet red strawberries, perfect for desserts', 
+                       base_price=6.99, category='Fruits',
+                       image_url='https://images.unsplash.com/photo-1464965911861-746a04b4bca6?w=400', 
+                       stock=45, seller_id=seller.id, sku='FRUIT-003', video_call_enabled=True),
+                Product(name='Bell Peppers', description='Colorful bell peppers for cooking', 
+                       base_price=4.49, category='Vegetables',
+                       image_url='https://images.unsplash.com/photo-1563565375-f3fdfdbefa83?w=400', 
+                       stock=55, seller_id=seller.id, sku='VEG-004', video_call_enabled=True),
             ]
             
             for product in products:
@@ -2264,7 +2359,7 @@ def init_db():
                 db.session.add(product)
             
             db.session.commit()
-            logger.info('Database initialized with sample data!')
+            logger.info('✅ Database initialized with sample data!')
         
         # Create superuser
         if not User.query.filter_by(username='benedict431').first():
@@ -2287,8 +2382,11 @@ def init_db():
 # Initialize database on startup
 with app.app_context():
     try:
+        # Create tables
+        db.create_all()
         init_db()
         logger.info("✅ Database initialization complete!")
+        logger.info("✅ Demo users: admin/admin123, seller1/seller123, rider1/rider123, buyer1/buyer123")
     except Exception as e:
         logger.error(f"❌ Database initialization error: {e}")
 
