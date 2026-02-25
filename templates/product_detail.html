@@ -34,6 +34,54 @@
             </a>
             {% endif %}
         </div>
+        <!-- Add after the seller info section -->
+{% if session.user_id and session.user_id != seller.id %}
+<div class="btn-group w-100 mb-3" role="group">
+    <a href="{{ url_for('chat_with_user', receiver_id=seller.id, product_id=product.id) }}" 
+       class="btn btn-outline-success">
+        <i class="bi bi-chat-dots"></i> Chat
+    </a>
+    <a href="tel:{{ seller.phone_number }}" class="btn btn-outline-primary">
+        <i class="bi bi-telephone"></i> Call
+    </a>
+    {% if seller.whatsapp_number %}
+    <a href="https://wa.me/{{ seller.whatsapp_number|replace('+', '')|replace(' ', '') }}?text=Hello%20{{ seller.username|urlencode }}%2C%20I'm%20interested%20in%20{{ product.name|urlencode }}" 
+       target="_blank" 
+       class="btn btn-outline-success">
+        <i class="bi bi-whatsapp"></i> WhatsApp
+    </a>
+    {% endif %}
+    {% if product.video_call_enabled %}
+    <button class="btn btn-outline-info" onclick="initiateVideoCall()">
+        <i class="bi bi-camera-video"></i> Video Call
+    </button>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Add at the bottom of the file -->
+<script>
+function initiateVideoCall() {
+    fetch('/video-call/initiate', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            receiver_id: {{ seller.id }},
+            product_id: {{ product.id }}
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.open(`/video-call/${data.call_id}`, '_blank', 'width=1200,height=800');
+        } else {
+            alert('Could not initiate video call: ' + data.error);
+        }
+    });
+}
+</script>
 
         <!-- Price Breakdown -->
         <div class="mb-3">
