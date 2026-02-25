@@ -16,7 +16,7 @@
                     Ask me anything about products, recipes, marketplace policies, or get help with your orders!
                 </p>
                 
-                <div class="chat-container mb-4" style="min-height: 300px; max-height: 400px; overflow-y: auto;">
+                <div class="chat-container mb-4" style="min-height: 300px; max-height: 400px; overflow-y: auto; padding: 15px; background-color: #f8f9fa; border-radius: 10px;">
                     {% if response %}
                     <div class="d-flex mb-3">
                         <div class="flex-shrink-0">
@@ -67,18 +67,11 @@
                         <i class="bi bi-lightbulb"></i> Try asking:
                     </small>
                     <div class="d-flex flex-wrap gap-2 mt-2">
-                        <button class="btn btn-sm btn-outline-secondary" onclick="setQuestion('What are your best selling products?')">
-                            Best selling products?
+                        {% for suggestion in suggestions %}
+                        <button class="btn btn-sm btn-outline-secondary" onclick="setQuestion('{{ suggestion }}')">
+                            {{ suggestion }}
                         </button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="setQuestion('How do I track my order?')">
-                            How to track order?
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="setQuestion('What payment methods do you accept?')">
-                            Payment methods?
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="setQuestion('How do I become a seller?')">
-                            Become a seller?
-                        </button>
+                        {% endfor %}
                     </div>
                 </div>
             </div>
