@@ -30,6 +30,15 @@
         .nav-item {
             position: relative;
         }
+        .ai-icon {
+            font-size: 1.5rem;
+            color: white;
+            transition: all 0.3s;
+        }
+        .ai-icon:hover {
+            transform: scale(1.1);
+            color: #ffc107;
+        }
         @keyframes notificationPulse {
             0% { transform: scale(1); }
             50% { transform: scale(1.2); }
@@ -37,77 +46,6 @@
         }
         .notification-pulse {
             animation: notificationPulse 0.5s ease-in-out;
-        }
-        .fade-in {
-            animation: fadeIn 0.3s ease-in;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .product-card {
-            transition: transform 0.2s, box-shadow 0.2s;
-            height: 100%;
-        }
-        .product-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-        .chat-message {
-            max-width: 70%;
-            word-wrap: break-word;
-        }
-        .chat-message.sent {
-            margin-left: auto;
-        }
-        .sidebar {
-            position: fixed;
-            top: 0;
-            bottom: 0;
-            left: 0;
-            z-index: 100;
-            padding: 48px 0 0;
-            box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
-        }
-        .sidebar .nav-link {
-            font-weight: 500;
-            color: #333;
-            padding: 0.5rem 1rem;
-        }
-        .sidebar .nav-link.active {
-            color: #198754;
-        }
-        .product-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 1rem;
-        }
-        .pos-cart-item {
-            background: #f8f9fa;
-            padding: 0.5rem;
-            margin-bottom: 0.5rem;
-            border-radius: 0.25rem;
-        }
-        .spinner-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(255,255,255,0.8);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-        }
-        .table-responsive {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-        @media print {
-            .navbar, footer, .btn, .no-print {
-                display: none !important;
-            }
         }
     </style>
 </head>
@@ -132,14 +70,16 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('community') }}">Community</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('ai_assistant') }}">
-                            <i class="bi bi-robot"></i> AI Assistant
-                        </a>
-                    </li>
                     {% endif %}
                 </ul>
                 <ul class="navbar-nav">
+                    <!-- AI Assistant Icon - Far Right -->
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('ai_assistant') }}" title="AI Assistant">
+                            <i class="bi bi-robot ai-icon"></i>
+                        </a>
+                    </li>
+                    
                     {% if session.user_id %}
                         <li class="nav-item">
                             <a class="nav-link position-relative" href="{{ url_for('cart') }}">
@@ -239,9 +179,6 @@
     <footer class="bg-light text-center py-4 mt-5">
         <p class="text-muted mb-0">
             &copy; 2026 Fresh Marketplace - Delivering Fresh Produce to Your Door
-        </p>
-        <p class="text-muted small mt-2">
-            <i class="bi bi-robot"></i> Ask our AI Assistant for help!
         </p>
     </footer>
 
