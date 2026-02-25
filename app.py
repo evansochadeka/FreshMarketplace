@@ -71,7 +71,7 @@ class User(db.Model):
     last_seen = db.Column(db.DateTime, default=datetime.utcnow)
     is_online = db.Column(db.Boolean, default=False)
     
-    # Relationships - FIXED: removed conflicting backrefs
+    # Relationships
     products = db.relationship('Product', back_populates='seller', lazy=True)
     sales = db.relationship('Sale', back_populates='seller', foreign_keys='Sale.seller_id', lazy=True)
     offline_sales = db.relationship('OfflineSale', back_populates='seller', lazy=True)
@@ -79,12 +79,16 @@ class User(db.Model):
     locations = db.relationship('UserLocation', back_populates='user', lazy=True)
     sent_messages = db.relationship('Message', foreign_keys='Message.sender_id', back_populates='sender', lazy=True)
     received_messages = db.relationship('Message', foreign_keys='Message.receiver_id', back_populates='receiver', lazy=True)
-    user_posts = db.relationship('Post', back_populates='author', lazy=True)  # Changed from 'posts'
+    posts = db.relationship('Post', back_populates='author', lazy=True)
     reviews_given = db.relationship('Review', foreign_keys='Review.reviewer_id', back_populates='reviewer', lazy=True)
     reviews_received = db.relationship('Review', foreign_keys='Review.reviewed_id', back_populates='reviewed', lazy=True)
     initiated_calls = db.relationship('VideoCall', foreign_keys='VideoCall.initiator_id', back_populates='initiator', lazy=True)
     received_calls = db.relationship('VideoCall', foreign_keys='VideoCall.receiver_id', back_populates='receiver', lazy=True)
     inventory_logs = db.relationship('InventoryLog', back_populates='seller', lazy=True)
+    product_inquiries = db.relationship('ProductInquiry', foreign_keys='ProductInquiry.buyer_id', back_populates='buyer', lazy=True)
+    received_inquiries = db.relationship('ProductInquiry', foreign_keys='ProductInquiry.seller_id', back_populates='seller', lazy=True)
+    rider_recommendations = db.relationship('RiderRecommendation', foreign_keys='RiderRecommendation.buyer_id', back_populates='buyer', lazy=True)
+    received_recommendations = db.relationship('RiderRecommendation', foreign_keys='RiderRecommendation.seller_id', back_populates='seller', lazy=True)
 
 class Product(db.Model):
     __tablename__ = 'product'
@@ -110,8 +114,9 @@ class Product(db.Model):
     # Relationships
     seller = db.relationship('User', back_populates='products')
     order_items = db.relationship('OrderItem', back_populates='product', lazy=True)
-    product_reviews = db.relationship('Review', back_populates='product', lazy=True)  # Changed from 'reviews'
+    reviews = db.relationship('Review', back_populates='product', lazy=True)
     inventory_logs = db.relationship('InventoryLog', back_populates='product', lazy=True)
+    inquiries = db.relationship('ProductInquiry', back_populates='product', lazy=True)
 
 class Order(db.Model):
     __tablename__ = 'order'
@@ -132,13 +137,13 @@ class Order(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime)
     
-    # Relationships - FIXED: added unique backref names
-    customer = db.relationship('User', foreign_keys=[user_id], backref='customer_orders')
-    rider = db.relationship('User', foreign_keys=[rider_id], backref='rider_orders')
-    seller = db.relationship('User', foreign_keys=[seller_id], backref='seller_orders_received')
-    items = db.relationship('OrderItem', back_populates='order', lazy=True, cascade='all, delete-orphan')
-    tracking = db.relationship('OrderTracking', back_populates='order', lazy=True, cascade='all, delete-orphan')
-    order_reviews = db.relationship('Review', back_populates='order', lazy=True)  # Changed from 'reviews'
+    # Relationships
+    user = db.relationship('User', foreign_keys=[user_id], backref='user_orders')
+    rider = db.relationship('User', foreign_keys=[rider_id], backref='rider_deliveries')
+    seller = db.relationship('User', foreign_keys=[seller_id], backref='seller_orders')
+    items = db.relationship('OrderItem', back_populates='order', lazy=True)
+    tracking = db.relationship('OrderTracking', back_populates='order', lazy=True)
+    reviews = db.relationship('Review', back_populates='order', lazy=True)
 
 class OrderItem(db.Model):
     __tablename__ = 'order_item'
@@ -228,8 +233,8 @@ class Review(db.Model):
     # Relationships
     reviewer = db.relationship('User', foreign_keys=[reviewer_id], back_populates='reviews_given')
     reviewed = db.relationship('User', foreign_keys=[reviewed_id], back_populates='reviews_received')
-    product = db.relationship('Product', back_populates='product_reviews')
-    order = db.relationship('Order', back_populates='order_reviews')
+    product = db.relationship('Product', back_populates='reviews')
+    order = db.relationship('Order', back_populates='reviews')
 
 class Post(db.Model):
     __tablename__ = 'post'
@@ -242,9 +247,9 @@ class Post(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Relationships - FIXED: using back_populates instead of backref
-    author = db.relationship('User', back_populates='user_posts')  # Changed from 'user' to 'author'
-    comments = db.relationship('Comment', back_populates='post', lazy=True, cascade='all, delete-orphan')
+    # Relationships
+    author = db.relationship('User', back_populates='posts')
+    comments = db.relationship('Comment', back_populates='post', lazy=True)
 
 class Comment(db.Model):
     __tablename__ = 'comment'
@@ -315,7 +320,7 @@ class VideoCall(db.Model):
     initiator = db.relationship('User', foreign_keys=[initiator_id], back_populates='initiated_calls')
     receiver = db.relationship('User', foreign_keys=[receiver_id], back_populates='received_calls')
     product = db.relationship('Product')
-    messages = db.relationship('VideoCallMessage', back_populates='call', lazy=True, cascade='all, delete-orphan')
+    messages = db.relationship('VideoCallMessage', back_populates='call', lazy=True)
 
 class VideoCallMessage(db.Model):
     __tablename__ = 'video_call_message'
@@ -345,6 +350,43 @@ class InventoryLog(db.Model):
     # Relationships
     product = db.relationship('Product', back_populates='inventory_logs')
     seller = db.relationship('User', back_populates='inventory_logs')
+
+class ProductInquiry(db.Model):
+    __tablename__ = 'product_inquiry'
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    buyer_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    seller_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    question = db.Column(db.Text, nullable=False)
+    answer = db.Column(db.Text)
+    status = db.Column(db.String(20), default='pending')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    answered_at = db.Column(db.DateTime)
+    
+    # Relationships
+    product = db.relationship('Product', back_populates='inquiries')
+    buyer = db.relationship('User', foreign_keys=[buyer_id], back_populates='product_inquiries')
+    seller = db.relationship('User', foreign_keys=[seller_id], back_populates='received_inquiries')
+
+class RiderRecommendation(db.Model):
+    __tablename__ = 'rider_recommendation'
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'))
+    buyer_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    seller_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    recommended_rider_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    reason = db.Column(db.Text)
+    status = db.Column(db.String(20), default='pending')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    buyer = db.relationship('User', foreign_keys=[buyer_id], back_populates='rider_recommendations')
+    seller = db.relationship('User', foreign_keys=[seller_id], back_populates='received_recommendations')
+    recommended_rider = db.relationship('User', foreign_keys=[recommended_rider_id])
+
+# Initialize Cohere
+cohere_api_key = os.environ.get('COHERE_API_KEY')
+co = cohere.Client(cohere_api_key) if cohere_api_key else None
 
 # ===== HELPER FUNCTIONS =====
 
@@ -425,6 +467,15 @@ def internal_error(error):
 @app.errorhandler(404)
 def not_found_error(error):
     return render_template('404.html'), 404
+
+# ===== CONTEXT PROCESSORS =====
+
+@app.context_processor
+def inject_available_riders():
+    if 'user_id' in session:
+        available_riders = User.query.filter_by(role='rider', is_online=True).limit(5).all()
+        return dict(available_riders=available_riders)
+    return dict(available_riders=[])
 
 # ===== AUTHENTICATION ROUTES =====
 
@@ -597,11 +648,115 @@ def product_detail(id):
         product = Product.query.get_or_404(id)
         seller = User.query.get(product.seller_id)
         related_products = Product.query.filter_by(category=product.category, is_active=True).filter(Product.id != product.id).limit(4).all()
-        return render_template('product_detail.html', product=product, seller=seller, related_products=related_products)
+        product_inquiries = ProductInquiry.query.filter_by(product_id=id, buyer_id=session.get('user_id')).all() if 'user_id' in session else []
+        return render_template('product_detail.html', 
+                             product=product, 
+                             seller=seller, 
+                             related_products=related_products,
+                             product_inquiries=product_inquiries)
     except Exception as e:
         logger.error(f"Product detail error: {e}")
         flash('Product not found.', 'danger')
         return redirect(url_for('products'))
+
+# ===== PRODUCT INQUIRY ROUTES =====
+
+@app.route('/product/<int:id>/inquiry', methods=['POST'])
+@login_required
+def product_inquiry(id):
+    product = Product.query.get_or_404(id)
+    question = request.form.get('question')
+    
+    if not question:
+        flash('Question cannot be empty.', 'danger')
+        return redirect(url_for('product_detail', id=id))
+    
+    inquiry = ProductInquiry(
+        product_id=id,
+        buyer_id=session['user_id'],
+        seller_id=product.seller_id,
+        question=question
+    )
+    
+    try:
+        db.session.add(inquiry)
+        db.session.commit()
+        flash('Your question has been sent to the seller!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Inquiry error: {e}")
+        flash('Error sending question. Please try again.', 'danger')
+    
+    return redirect(url_for('product_detail', id=id))
+
+@app.route('/product/<int:id>/recommend-rider', methods=['POST'])
+@login_required
+def recommend_rider(id):
+    product = Product.query.get_or_404(id)
+    rider_id = request.form.get('rider_id')
+    reason = request.form.get('reason', '')
+    
+    if not rider_id:
+        flash('Please select a rider.', 'danger')
+        return redirect(url_for('product_detail', id=id))
+    
+    rider = User.query.get(rider_id)
+    if not rider or rider.role != 'rider':
+        flash('Invalid rider selected.', 'danger')
+        return redirect(url_for('product_detail', id=id))
+    
+    recommendation = RiderRecommendation(
+        buyer_id=session['user_id'],
+        seller_id=product.seller_id,
+        recommended_rider_id=rider_id,
+        reason=reason
+    )
+    
+    try:
+        db.session.add(recommendation)
+        db.session.commit()
+        flash(f'Rider {rider.username} recommended to seller!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Recommendation error: {e}")
+        flash('Error sending recommendation. Please try again.', 'danger')
+    
+    return redirect(url_for('product_detail', id=id))
+
+@app.route('/seller/inquiries')
+@role_required('seller')
+def seller_inquiries():
+    seller_id = session['user_id']
+    inquiries = ProductInquiry.query.filter_by(seller_id=seller_id).order_by(ProductInquiry.created_at.desc()).all()
+    
+    return render_template('seller_inquiries.html', inquiries=inquiries)
+
+@app.route('/inquiry/<int:id>/answer', methods=['POST'])
+@login_required
+def answer_inquiry(id):
+    inquiry = ProductInquiry.query.get_or_404(id)
+    
+    if inquiry.seller_id != session['user_id']:
+        flash('Access denied.', 'danger')
+        return redirect(url_for('seller_inquiries'))
+    
+    answer = request.form.get('answer')
+    if not answer:
+        flash('Answer cannot be empty.', 'danger')
+        return redirect(url_for('seller_inquiries'))
+    
+    inquiry.answer = answer
+    inquiry.status = 'answered'
+    inquiry.answered_at = datetime.utcnow()
+    
+    try:
+        db.session.commit()
+        flash('Answer sent to buyer!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash('Error sending answer.', 'danger')
+    
+    return redirect(url_for('seller_inquiries'))
 
 # ===== SELLER DASHBOARD & CRM FEATURES =====
 
@@ -661,6 +816,9 @@ def seller_dashboard():
         # Unread messages
         unread_messages = Message.query.filter_by(receiver_id=seller.id, is_read=False).count()
         
+        # Pending inquiries
+        pending_inquiries = ProductInquiry.query.filter_by(seller_id=seller.id, status='pending').count()
+        
         stats = {
             'total_products': len(products),
             'total_sales': float(total_sales),
@@ -668,7 +826,8 @@ def seller_dashboard():
             'week_sales': float(week_sales),
             'month_sales': float(month_sales),
             'low_stock_count': len(low_stock_products),
-            'unread_messages': unread_messages
+            'unread_messages': unread_messages,
+            'pending_inquiries': pending_inquiries
         }
         
         return render_template('seller_dashboard.html', 
@@ -2046,9 +2205,6 @@ def review_user(user_id):
 
 # ===== AI CHAT ASSISTANT =====
 
-cohere_api_key = os.environ.get('COHERE_API_KEY')
-co = cohere.Client(cohere_api_key) if cohere_api_key else None
-
 @app.route('/ai-assistant', methods=['GET', 'POST'])
 @login_required
 def ai_assistant():
@@ -2382,8 +2538,7 @@ def init_db():
 # Initialize database on startup
 with app.app_context():
     try:
-        # Drop all tables and recreate (only for development - remove in production)
-        # db.drop_all()
+        # Create tables
         db.create_all()
         init_db()
         logger.info("✅ Database initialization complete!")
