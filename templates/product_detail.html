@@ -59,30 +59,6 @@
 </div>
 {% endif %}
 
-<!-- Add at the bottom of the file -->
-<script>
-function initiateVideoCall() {
-    fetch('/video-call/initiate', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            receiver_id: {{ seller.id }},
-            product_id: {{ product.id }}
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            window.open(`/video-call/${data.call_id}`, '_blank', 'width=1200,height=800');
-        } else {
-            alert('Could not initiate video call: ' + data.error);
-        }
-    });
-}
-</script>
-
         <!-- Price Breakdown -->
         <div class="mb-3">
             <h2 class="text-success">Kes {{ "%.2f"|format(product.price) }}</h2>
@@ -178,4 +154,28 @@ function shareProduct() {
     }
 }
 </script>
+<!-- Add at the bottom of the file -->
+<script>
+function initiateVideoCall() {
+    fetch('/video-call/initiate', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            receiver_id: {{ seller.id }},
+            product_id: {{ product.id }}
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.open(`/video-call/${data.call_id}`, '_blank', 'width=1200,height=800');
+        } else {
+            alert('Could not initiate video call: ' + data.error);
+        }
+    });
+}
+</script>
 {% endblock %}
+
