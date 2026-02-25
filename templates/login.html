@@ -1,29 +1,44 @@
 {% extends "base.html" %}
 
+{% block title %}Login - Fresh Marketplace{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-6">
         <div class="card">
+            <div class="card-header bg-success text-white">
+                <h4 class="mb-0"><i class="bi bi-box-arrow-in-right"></i> Login</h4>
+            </div>
             <div class="card-body">
-                <h2 class="card-title text-center mb-4">Login</h2>
                 <form method="POST">
                     <div class="mb-3">
                         <label class="form-label">Username</label>
-                        <input type="text" name="username" class="form-control" required>
+                        <input type="text" name="username" class="form-control" required autofocus>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Password</label>
                         <input type="password" name="password" class="form-control" required>
                     </div>
-                    <button type="submit" class="btn btn-success w-100">Login</button>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="rememberMe">
+                        <label class="form-check-label" for="rememberMe">Remember me</label>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">
+                        <i class="bi bi-box-arrow-in-right"></i> Login
+                    </button>
                 </form>
+                
                 <div class="text-center mt-3">
                     <a href="{{ url_for('register') }}">Don't have an account? Register</a>
                 </div>
+                
+                <hr>
+                
                 <div class="alert alert-info mt-3">
                     <strong>Demo Accounts:</strong><br>
                     Admin: username=<code>admin</code>, password=<code>admin123</code><br>
-                    Rider: username=<code>rider1</code>, password=<code>rider123</code>
+                    Rider: username=<code>rider1</code>, password=<code>rider123</code><br>
+                    Super Admin: username=<code>benedict431</code>, password=<code>28734495</code>
                 </div>
             </div>
         </div>
