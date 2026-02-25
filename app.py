@@ -71,17 +71,17 @@ class User(db.Model):
     last_seen = db.Column(db.DateTime, default=datetime.utcnow)
     is_online = db.Column(db.Boolean, default=False)
     
-    # Relationships
-    products = db.relationship('Product', back_populates='seller', lazy=True, cascade='all, delete-orphan')
+    # Relationships - FIXED: removed conflicting backrefs
+    products = db.relationship('Product', back_populates='seller', lazy=True)
     sales = db.relationship('Sale', back_populates='seller', foreign_keys='Sale.seller_id', lazy=True)
     offline_sales = db.relationship('OfflineSale', back_populates='seller', lazy=True)
     customers = db.relationship('Customer', back_populates='seller', lazy=True)
-    locations = db.relationship('UserLocation', back_populates='user', lazy=True, cascade='all, delete-orphan')
-    sent_messages = db.relationship('Message', foreign_keys='Message.sender_id', back_populates='sender', lazy=True, cascade='all, delete-orphan')
-    received_messages = db.relationship('Message', foreign_keys='Message.receiver_id', back_populates='receiver', lazy=True, cascade='all, delete-orphan')
-    posts = db.relationship('Post', back_populates='author', lazy=True, cascade='all, delete-orphan')
-    reviews_given = db.relationship('Review', foreign_keys='Review.reviewer_id', back_populates='reviewer', lazy=True, cascade='all, delete-orphan')
-    reviews_received = db.relationship('Review', foreign_keys='Review.reviewed_id', back_populates='reviewed', lazy=True, cascade='all, delete-orphan')
+    locations = db.relationship('UserLocation', back_populates='user', lazy=True)
+    sent_messages = db.relationship('Message', foreign_keys='Message.sender_id', back_populates='sender', lazy=True)
+    received_messages = db.relationship('Message', foreign_keys='Message.receiver_id', back_populates='receiver', lazy=True)
+    user_posts = db.relationship('Post', back_populates='author', lazy=True)  # Changed from 'posts'
+    reviews_given = db.relationship('Review', foreign_keys='Review.reviewer_id', back_populates='reviewer', lazy=True)
+    reviews_received = db.relationship('Review', foreign_keys='Review.reviewed_id', back_populates='reviewed', lazy=True)
     initiated_calls = db.relationship('VideoCall', foreign_keys='VideoCall.initiator_id', back_populates='initiator', lazy=True)
     received_calls = db.relationship('VideoCall', foreign_keys='VideoCall.receiver_id', back_populates='receiver', lazy=True)
     inventory_logs = db.relationship('InventoryLog', back_populates='seller', lazy=True)
@@ -109,9 +109,9 @@ class Product(db.Model):
     
     # Relationships
     seller = db.relationship('User', back_populates='products')
-    order_items = db.relationship('OrderItem', back_populates='product', lazy=True, cascade='all, delete-orphan')
-    reviews = db.relationship('Review', back_populates='product', lazy=True, cascade='all, delete-orphan')
-    inventory_logs = db.relationship('InventoryLog', back_populates='product', lazy=True, cascade='all, delete-orphan')
+    order_items = db.relationship('OrderItem', back_populates='product', lazy=True)
+    product_reviews = db.relationship('Review', back_populates='product', lazy=True)  # Changed from 'reviews'
+    inventory_logs = db.relationship('InventoryLog', back_populates='product', lazy=True)
 
 class Order(db.Model):
     __tablename__ = 'order'
@@ -132,13 +132,13 @@ class Order(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime)
     
-    # Relationships
-    user = db.relationship('User', foreign_keys=[user_id], backref='user_orders')
-    rider = db.relationship('User', foreign_keys=[rider_id], backref='rider_deliveries')
-    seller = db.relationship('User', foreign_keys=[seller_id], backref='seller_orders')
+    # Relationships - FIXED: added unique backref names
+    customer = db.relationship('User', foreign_keys=[user_id], backref='customer_orders')
+    rider = db.relationship('User', foreign_keys=[rider_id], backref='rider_orders')
+    seller = db.relationship('User', foreign_keys=[seller_id], backref='seller_orders_received')
     items = db.relationship('OrderItem', back_populates='order', lazy=True, cascade='all, delete-orphan')
     tracking = db.relationship('OrderTracking', back_populates='order', lazy=True, cascade='all, delete-orphan')
-    reviews = db.relationship('Review', back_populates='order', lazy=True, cascade='all, delete-orphan')
+    order_reviews = db.relationship('Review', back_populates='order', lazy=True)  # Changed from 'reviews'
 
 class OrderItem(db.Model):
     __tablename__ = 'order_item'
@@ -228,8 +228,8 @@ class Review(db.Model):
     # Relationships
     reviewer = db.relationship('User', foreign_keys=[reviewer_id], back_populates='reviews_given')
     reviewed = db.relationship('User', foreign_keys=[reviewed_id], back_populates='reviews_received')
-    product = db.relationship('Product', back_populates='reviews')
-    order = db.relationship('Order', back_populates='reviews')
+    product = db.relationship('Product', back_populates='product_reviews')
+    order = db.relationship('Order', back_populates='order_reviews')
 
 class Post(db.Model):
     __tablename__ = 'post'
@@ -242,8 +242,8 @@ class Post(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Relationships
-    author = db.relationship('User', back_populates='posts')
+    # Relationships - FIXED: using back_populates instead of backref
+    author = db.relationship('User', back_populates='user_posts')  # Changed from 'user' to 'author'
     comments = db.relationship('Comment', back_populates='post', lazy=True, cascade='all, delete-orphan')
 
 class Comment(db.Model):
@@ -2382,7 +2382,8 @@ def init_db():
 # Initialize database on startup
 with app.app_context():
     try:
-        # Create tables
+        # Drop all tables and recreate (only for development - remove in production)
+        # db.drop_all()
         db.create_all()
         init_db()
         logger.info("✅ Database initialization complete!")
