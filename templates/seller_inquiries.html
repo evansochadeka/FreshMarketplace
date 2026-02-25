@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Product Inquiries - Fresh Marketplace{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4"><i class="bi bi-question-circle"></i> Product Inquiries</h1>
+        
+        {% if inquiries %}
+        <div class="list-group">
+            {% for inquiry in inquiries %}
+            <div class="list-group-item">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h6 class="mb-1">
+                        <i class="bi bi-box"></i> {{ inquiry.product.name }}
+                    </h6>
+                    <small class="text-muted">{{ inquiry.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                </div>
+                <p class="mb-2"><strong>Question from {{ inquiry.buyer.username }}:</strong> {{ inquiry.question }}</p>
+                
+                {% if inquiry.answer %}
+                <div class="bg-success bg-opacity-10 p-2 rounded mb-2">
+                    <p class="mb-0"><strong>Your Answer:</strong> {{ inquiry.answer }}</p>
+                    <small class="text-muted">Answered on {{ inquiry.answered_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                </div>
+                {% else %}
+                <form method="POST" action="{{ url_for('answer_inquiry', id=inquiry.id) }}" class="mt-2">
+                    <div class="input-group">
+                        <textarea name="answer" class="form-control" rows="2" placeholder="Type your answer..." required></textarea>
+                        <button class="btn btn-success" type="submit">Send Answer</button>
+                    </div>
+                </form>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> No inquiries yet.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
