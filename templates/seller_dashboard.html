@@ -8,41 +8,40 @@
             <div class="position-sticky pt-3">
                 <ul class="nav flex-column">
                     <li class="nav-item">
-                        <a class="nav-link active" href="#">
-                            <span data-feather="home"></span>
-                            Dashboard
+                        <a class="nav-link active" href="{{ url_for('seller_dashboard') }}">
+                            <i class="bi bi-speedometer2"></i> Dashboard
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('seller_products') }}">
-                            Products
+                            <i class="bi bi-box"></i> My Products
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('seller_inventory') }}">
-                            Inventory
+                            <i class="bi bi-clipboard-data"></i> Inventory
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('pos_dashboard') }}">
-                            POS System
+                            <i class="bi bi-calculator"></i> POS System
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('sales_report') }}">
-                            Sales Reports
+                            <i class="bi bi-graph-up"></i> Sales Reports
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('customer_list') }}">
-                            Customers
+                            <i class="bi bi-people"></i> Customers
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('inbox') }}">
-                            Messages
-                            {% if stats.unread_messages > 0 %}
-                            <span class="badge bg-danger">{{ stats.unread_messages }}</span>
+                        <a class="nav-link" href="{{ url_for('seller_inquiries') }}">
+                            <i class="bi bi-question-circle"></i> Inquiries
+                            {% if stats.pending_inquiries > 0 %}
+                            <span class="badge bg-danger">{{ stats.pending_inquiries }}</span>
                             {% endif %}
                         </a>
                     </li>
@@ -57,13 +56,24 @@
                 <div class="btn-toolbar mb-2 mb-md-0">
                     <div class="btn-group me-2">
                         <a href="{{ url_for('add_product') }}" class="btn btn-sm btn-success">
-                            Add Product
+                            <i class="bi bi-plus-circle"></i> Add Product
                         </a>
                         <a href="{{ url_for('pos_dashboard') }}" class="btn btn-sm btn-primary">
-                            Open POS
+                            <i class="bi bi-calculator"></i> Open POS
                         </a>
                     </div>
                 </div>
+            </div>
+
+            <!-- Welcome Section -->
+            <div class="alert alert-success">
+                <i class="bi bi-person-circle"></i> Welcome back, <strong>{{ seller.business_name or seller.username }}</strong>!
+                {% if stats.pending_inquiries > 0 %}
+                <span class="ms-3">
+                    <i class="bi bi-question-circle"></i> You have <strong>{{ stats.pending_inquiries }}</strong> pending inquiries.
+                    <a href="{{ url_for('seller_inquiries') }}" class="alert-link">View now</a>
+                </span>
+                {% endif %}
             </div>
 
             <!-- Statistics Cards -->
@@ -73,6 +83,7 @@
                         <div class="card-body">
                             <h5>Today's Sales</h5>
                             <h3>Kes {{ "%.2f"|format(stats.today_sales) }}</h3>
+                            <small>{{ stats.total_products }} products</small>
                         </div>
                     </div>
                 </div>
@@ -95,20 +106,23 @@
                 <div class="col-md-3">
                     <div class="card bg-warning text-dark">
                         <div class="card-body">
-                            <h5>Total Products</h5>
-                            <h3>{{ stats.total_products }}</h3>
+                            <h5>Total Sales</h5>
+                            <h3>Kes {{ "%.2f"|format(stats.total_sales) }}</h3>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- Low Stock Alerts -->
-            {% if low_stock_products %}
+            {% if low_stock_products and low_stock_products|length > 0 %}
             <div class="alert alert-warning">
-                <h5>⚠️ Low Stock Alerts</h5>
+                <h5><i class="bi bi-exclamation-triangle"></i> Low Stock Alerts</h5>
                 <ul>
                     {% for product in low_stock_products %}
-                    <li>{{ product.name }} - Only {{ product.stock }} left</li>
+                    <li>
+                        <strong>{{ product.name }}</strong> - Only {{ product.stock }} left 
+                        <a href="{{ url_for('edit_product', id=product.id) }}" class="alert-link">Restock now</a>
+                    </li>
                     {% endfor %}
                 </ul>
             </div>
@@ -117,51 +131,58 @@
             <!-- Recent Orders -->
             <div class="card mb-4">
                 <div class="card-header">
-                    <h5>Recent Orders</h5>
+                    <h5><i class="bi bi-clock-history"></i> Recent Orders</h5>
                 </div>
                 <div class="card-body">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Order #</th>
-                                <th>Customer</th>
-                                <th>Total</th>
-                                <th>Status</th>
-                                <th>Date</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for order in recent_orders %}
-                            <tr>
-                                <td>#{{ order.id }}</td>
-                                <td>{{ order.user.username }}</td>
-                                <td>Kes {{ "%.2f"|format(order.total) }}</td>
-                                <td>
-                                    <span class="badge bg-{{ 'warning' if order.status == 'pending' else 'info' if order.status == 'in_transit' else 'success' }}">
-                                        {{ order.status }}
-                                    </span>
-                                </td>
-                                <td>{{ order.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                                <td>
-                                    <a href="{{ url_for('order_detail', id=order.id) }}" class="btn btn-sm btn-primary">View</a>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                    {% if recent_orders and recent_orders|length > 0 %}
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Order #</th>
+                                    <th>Customer</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                    <th>Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for order in recent_orders %}
+                                <tr>
+                                    <td>#{{ order.id }}</td>
+                                    <td>{{ order.user.username if order.user else 'N/A' }}</td>
+                                    <td>Kes {{ "%.2f"|format(order.total) }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'warning' if order.status == 'pending' else 'info' if order.status == 'in_transit' else 'success' }}">
+                                            {{ order.status }}
+                                        </span>
+                                    </td>
+                                    <td>{{ order.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>
+                                        <a href="{{ url_for('order_detail', id=order.id) }}" class="btn btn-sm btn-primary">View</a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center py-3">No orders yet</p>
+                    {% endif %}
                 </div>
             </div>
 
-            <!-- Top Products -->
+            <!-- Quick Actions -->
             <div class="row">
                 <div class="col-md-6">
                     <div class="card">
                         <div class="card-header">
-                            <h5>Top Selling Products</h5>
+                            <h5><i class="bi bi-star"></i> Top Selling Products</h5>
                         </div>
                         <div class="card-body">
-                            <table class="table">
+                            {% if top_products and top_products|length > 0 %}
+                            <table class="table table-sm">
                                 <thead>
                                     <tr>
                                         <th>Product</th>
@@ -179,37 +200,42 @@
                                     {% endfor %}
                                 </tbody>
                             </table>
+                            {% else %}
+                            <p class="text-muted text-center py-3">No sales data yet</p>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
-
-                <!-- Recent Customers -->
                 <div class="col-md-6">
                     <div class="card">
                         <div class="card-header">
-                            <h5>Recent Customers</h5>
+                            <h5><i class="bi bi-people"></i> Recent Customers</h5>
                         </div>
                         <div class="card-body">
-                            <table class="table">
+                            {% if recent_customers and recent_customers|length > 0 %}
+                            <table class="table table-sm">
                                 <thead>
                                     <tr>
                                         <th>Name</th>
                                         <th>Phone</th>
-                                        <th>Last Visit</th>
                                         <th>Total</th>
+                                        <th>Last Visit</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for customer in recent_customers %}
                                     <tr>
                                         <td>{{ customer.name }}</td>
-                                        <td>{{ customer.phone }}</td>
-                                        <td>{{ customer.last_visit.strftime('%Y-%m-%d') if customer.last_visit else 'Never' }}</td>
+                                        <td>{{ customer.phone or 'N/A' }}</td>
                                         <td>Kes {{ "%.2f"|format(customer.total_purchases) }}</td>
+                                        <td>{{ customer.last_visit.strftime('%Y-%m-%d') if customer.last_visit else 'Never' }}</td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
+                            {% else %}
+                            <p class="text-muted text-center py-3">No customers yet</p>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
@@ -217,4 +243,28 @@
         </main>
     </div>
 </div>
+
+<style>
+.sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 100;
+    padding: 48px 0 0;
+    box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
+}
+.sidebar .nav-link {
+    font-weight: 500;
+    color: #333;
+    padding: 0.5rem 1rem;
+}
+.sidebar .nav-link.active {
+    color: #198754;
+    background-color: #e9ecef;
+}
+main {
+    padding-top: 1.5rem;
+}
+</style>
 {% endblock %}
