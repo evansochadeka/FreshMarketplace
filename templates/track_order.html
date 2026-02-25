@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block title %}Track Order #{{ order.id }} - Fresh Marketplace{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="bi bi-truck"></i> Track Order #{{ order.id }}
+        </h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-body p-0">
+                <div id="map" style="height: 500px; width: 100%; border-radius: 10px;"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <!-- Order Status Card -->
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Order Status</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="flex-shrink-0">
+                        <span class="badge bg-{{ 'warning' if order.status == 'pending' else 'info' if order.status == 'in_transit' else 'success' }} p-3">
+                            <i class="bi bi-{{ 'clock' if order.status == 'pending' else 'truck' if order.status == 'in_transit' else 'check-circle' }} fs-4"></i>
+                        </span>
+                    </div>
+                    <div class="flex-grow-1 ms-3">
+                        <h6 class="mb-0">Status: <span class="text-{{ 'warning' if order.status == 'pending' else 'info' if order.status == 'in_transit' else 'success' }}">{{ order.status|upper }}</span></h6>
+                        <small class="text-muted">Last updated: {{ order.updated_at.strftime('%H:%M, %b %d') if order.updated_at else order.created_at.strftime('%H:%M, %b %d') }}</small>
+                    </div>
+                </div>
+                
+                {% if order.rider %}
+                <hr>
+                <h6><i class="bi bi-person-badge"></i> Rider Information</h6>
+                <div class="d-flex align-items-center mb-2">
+                    {% if order.rider.profile_image %}
+                    <img src="{{ order.rider.profile_image }}" class="rounded-circle me-2" width="40" height="40" style="object-fit: cover;">
+                    {% else %}
+                    <i class="bi bi-person-circle fs-1 me-2"></i>
+                    {% endif %}
+                    <div>
+                        <strong>{{ order.rider.username }}</strong><br>
+                        <small class="text-muted">{{ order.rider.phone_number }}</small>
+                    </div>
+                </div>
+                
+                <!-- Contact Rider Buttons -->
+                <div class="d-grid gap-2">
+                    <a href="tel:{{ order.rider.phone_number }}" class="btn btn-outline-primary">
+                        <i class="bi bi-telephone"></i> Call Rider
+                    </a>
+                    {% if order.rider.whatsapp_number %}
+                    <a href="https://wa.me/{{ order.rider.whatsapp_number|replace('+', '')|replace(' ', '') }}?text=Hello%20{{ order.rider.username|urlencode }}%2C%20I'm%20tracking%20order%20%23{{ order.id }}" 
+                       target="_blank" 
+                       class="btn btn-outline-success">
+                        <i class="bi bi-whatsapp"></i> WhatsApp Rider
+                    </a>
+                    {% endif %}
+                </div>
+                {% endif %}
+                
+                <hr>
+                <h6><i class="bi bi-geo-alt"></i> Delivery Address</h6>
+                <p class="mb-0">{{ order.delivery_address }}</p>
+                {% if order.delivery_lat and order.delivery_lng %}
+                <small class="text-muted">Coordinates: {{ order.delivery_lat }}, {{ order.delivery_lng }}</small>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Delivery Progress -->
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-graph-up"></i> Delivery Progress</h5>
+            </div>
+            <div class="card-body">
+                <div class="progress mb-3" style="height: 20px;">
+                    <div class="progress-bar bg-success" role="progressbar" 
+                         style="width: {{ '25' if order.status == 'pending' else '75' if order.status == 'in_transit' else '100' }}%">
+                        {{ 'Order Placed' if order.status == 'pending' else 'On the Way' if order.status == 'in_transit' else 'Delivered' }}
+                    </div>
+                </div>
+                
+                <ul class="list-unstyled">
+                    <li class="mb-2">
+                        <i class="bi bi-check-circle-fill text-success me-2"></i>
+                        Order Placed: {{ order.created_at.strftime('%H:%M, %b %d') }}
+                    </li>
+                    {% if order.rider %}
+                    <li class="mb-2">
+                        <i class="bi bi-check-circle-fill text-success me-2"></i>
+                        Rider Assigned: {{ order.updated_at.strftime('%H:%M, %b %d') if order.updated_at else '' }}
+                    </li>
+                    {% endif %}
+                    {% if order.status == 'completed' %}
+                    <li class="mb-2">
+                        <i class="bi bi-check-circle-fill text-success me-2"></i>
+                        Delivered: {{ order.completed_at.strftime('%H:%M, %b %d') }}
+                    </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Leaflet CSS and JS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize socket connection
+    const socket = io();
+    
+    // Join order tracking room
+    socket.emit('track_order', { order_id: {{ order.id }} });
+    
+    // Initialize map
+    var map = L.map('map').setView([0, 0], 2);
+    
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+    
+    var riderMarker = null;
+    var deliveryMarker = null;
+    var routingControl = null;
+    
+    {% if order.delivery_lat and order.delivery_lng %}
+        // Add delivery location marker
+        deliveryMarker = L.marker([{{ order.delivery_lat }}, {{ order.delivery_lng }}], {
+            icon: L.icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+                shadowSize: [41, 41]
+            })
+        }).addTo(map).bindPopup('Delivery Location');
+        
+        map.setView([{{ order.delivery_lat }}, {{ order.delivery_lng }}], 13);
+    {% endif %}
+    
+    // Function to update rider location
+    function updateRiderLocation(lat, lng) {
+        if (riderMarker) {
+            map.removeLayer(riderMarker);
+        }
+        
+        riderMarker = L.marker([lat, lng], {
+            icon: L.icon({
+                iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+                shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34],
+                shadowSize: [41, 41]
+            })
+        }).addTo(map).bindPopup('Rider Current Location');
+        
+        // Update route if both markers exist
+        {% if order.delivery_lat and order.delivery_lng %}
+        if (routingControl) {
+            map.removeControl(routingControl);
+        }
+        
+        routingControl = L.Routing.control({
+            waypoints: [
+                L.latLng(lat, lng),
+                L.latLng({{ order.delivery_lat }}, {{ order.delivery_lng }})
+            ],
+            routeWhileDragging: false,
+            addWaypoints: false,
+            draggableWaypoints: false,
+            fitSelectedRoutes: true,
+            showAlternatives: false
+        }).addTo(map);
+        {% endif %}
+        
+        // Update ETA (you can calculate this server-side)
+        fetch(`/api/calculate-eta?lat=${lat}&lng=${lng}&dest_lat={{ order.delivery_lat }}&dest_lng={{ order.delivery_lng }}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.eta) {
+                    const etaDiv = document.getElementById('eta-display');
+                    if (etaDiv) {
+                        etaDiv.innerHTML = `Estimated arrival: ${data.eta} minutes`;
+                    }
+                }
+            });
+    }
+    
+    // Listen for real-time location updates
+    socket.on(`order_{{ order.id }}_location`, function(data) {
+        updateRiderLocation(data.lat, data.lng);
+    });
+    
+    // Initial rider location fetch
+    {% if order.rider_id %}
+    fetch(`/api/rider-location/{{ order.rider_id }}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.lat && data.lng) {
+                updateRiderLocation(data.lat, data.lng);
+            }
+        });
+    {% endif %}
+    
+    // Add ETA display div
+    const etaDiv = document.createElement('div');
+    etaDiv.id = 'eta-display';
+    etaDiv.className = 'alert alert-info mt-3';
+    etaDiv.innerHTML = 'Calculating ETA...';
+    document.querySelector('.card-body').appendChild(etaDiv);
+});
+
+// Function to share location via WhatsApp
+function shareLocation() {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function(position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const message = `I'm at this location: https://maps.google.com/?q=${lat},${lng}`;
+            
+            {% if order.rider and order.rider.whatsapp_number %}
+            window.open(`https://wa.me/{{ order.rider.whatsapp_number|replace('+', '')|replace(' ', '') }}?text=${encodeURIComponent(message)}`, '_blank');
+            {% endif %}
+        });
+    }
+}
+</script>
+{% endblock %}

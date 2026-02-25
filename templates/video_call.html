@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Call - Fresh Marketplace</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        #video-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 10px;
+            height: calc(100vh - 150px);
+        }
+        .video-wrapper {
+            position: relative;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .video-label {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.5);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        #controls {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            padding: 15px 25px;
+            border-radius: 50px;
+            display: flex;
+            gap: 15px;
+            z-index: 1000;
+        }
+        .control-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: none;
+            background: #333;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .control-btn:hover {
+            transform: scale(1.1);
+        }
+        .control-btn.danger {
+            background: #dc3545;
+        }
+        .control-btn.success {
+            background: #28a745;
+        }
+        .control-btn.warning {
+            background: #ffc107;
+            color: #000;
+        }
+        #chat-panel {
+            position: fixed;
+            right: -400px;
+            top: 0;
+            width: 400px;
+            height: 100vh;
+            background: white;
+            box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+            transition: right 0.3s;
+            display: flex;
+            flex-direction: column;
+            z-index: 999;
+        }
+        #chat-panel.open {
+            right: 0;
+        }
+        #chat-header {
+            padding: 15px;
+            background: #28a745;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+        }
+        .message.ai .bubble {
+            background: #f8f9fa;
+            border-left: 3px solid #28a745;
+        }
+        .message.self .bubble {
+            background: #28a745;
+            color: white;
+            margin-left: auto;
+        }
+        .bubble {
+            max-width: 80%;
+            padding: 10px;
+            border-radius: 10px;
+        }
+        .sender {
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 3px;
+        }
+        .timestamp {
+            font-size: 10px;
+            opacity: 0.7;
+            margin-top: 3px;
+        }
+        #chat-input-area {
+            padding: 15px;
+            border-top: 1px solid #dee2e6;
+            display: flex;
+            gap: 10px;
+        }
+        #chat-input {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ced4da;
+            border-radius: 5px;
+        }
+        #send-message {
+            padding: 8px 15px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #ai-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(40,167,69,0.9);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Main Video Container -->
+    <div id="video-container">
+        <div class="video-wrapper" id="local-video-wrapper">
+            <video id="localVideo" autoplay muted playsinline></video>
+            <div class="video-label">You ({{ session.username }})</div>
+        </div>
+        <div class="video-wrapper" id="remote-video-wrapper" style="display: none;">
+            <video id="remoteVideo" autoplay playsinline></video>
+            <div class="video-label">{{ other_user.username }}</div>
+            <div id="ai-badge" style="display: none;">AI Assistant Active</div>
+        </div>
+    </div>
+    
+    <!-- Controls -->
+    <div id="controls">
+        <button class="control-btn" id="toggle-mic" title="Mute/Unmute">
+            <i class="bi bi-mic"></i>
+        </button>
+        <button class="control-btn" id="toggle-camera" title="Camera on/off">
+            <i class="bi bi-camera-video"></i>
+        </button>
+        <button class="control-btn" id="toggle-chat" title="Open Chat">
+            <i class="bi bi-chat-dots"></i>
+        </button>
+        <button class="control-btn success" id="toggle-ai" title="Toggle AI Assistant">
+            <i class="bi bi-robot"></i>
+        </button>
+        <button class="control-btn danger" id="end-call" title="End Call">
+            <i class="bi bi-telephone-x"></i>
+        </button>
+    </div>
+    
+    <!-- Chat Panel -->
+    <div id="chat-panel">
+        <div id="chat-header">
+            <h6 class="mb-0"><i class="bi bi-chat"></i> Chat</h6>
+            <button class="btn btn-sm btn-light" onclick="toggleChat()">×</button>
+        </div>
+        <div id="chat-messages"></div>
+        <div id="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Type a message...">
+            <button id="send-message">Send</button>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        // Configuration
+        const callId = {{ call.id }};
+        const roomId = '{{ call.room_id }}';
+        const userId = {{ session['user_id'] }};
+        const username = '{{ session['username'] }}';
+        const otherUsername = '{{ other_user.username }}';
+        const aiEnabled = {{ 'true' if call.ai_assistant_active else 'false' }};
+        
+        // WebRTC setup
+        let localStream;
+        let remoteStream;
+        let peerConnection;
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' }
+            ]
+        };
+        
+        // Socket.io connection
+        const socket = io();
+        
+        // DOM elements
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const remoteWrapper = document.getElementById('remote-video-wrapper');
+        const aiBadge = document.getElementById('ai-badge');
+        const chatMessages = document.getElementById('chat-messages');
+        const chatInput = document.getElementById('chat-input');
+        
+        // Initialize media
+        async function initCall() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localVideo.srcObject = localStream;
+                
+                // Join socket room
+                socket.emit('join_call', { call_id: callId });
+                
+                // Create peer connection
+                peerConnection = new RTCPeerConnection(configuration);
+                
+                // Add local tracks
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+                
+                // Handle remote stream
+                peerConnection.ontrack = event => {
+                    remoteStream = event.streams[0];
+                    remoteVideo.srcObject = remoteStream;
+                    remoteWrapper.style.display = 'block';
+                };
+                
+                // Handle ICE candidates
+                peerConnection.onicecandidate = event => {
+                    if (event.candidate) {
+                        socket.emit('ice_candidate', {
+                            call_id: callId,
+                            candidate: event.candidate
+                        });
+                    }
+                };
+                
+                // Create offer if initiator
+                if (userId === {{ call.initiator_id }}) {
+                    const offer = await peerConnection.createOffer();
+                    await peerConnection.setLocalDescription(offer);
+                    
+                    socket.emit('offer', {
+                        call_id: callId,
+                        offer: offer
+                    });
+                }
+                
+                // Show AI badge if enabled
+                if (aiEnabled) {
+                    aiBadge.style.display = 'block';
+                }
+                
+            } catch (err) {
+                console.error('Error accessing media devices:', err);
+                alert('Could not access camera or microphone');
+            }
+        }
+        
+        // Socket event handlers
+        socket.on('offer', async data => {
+            if (data.call_id === callId) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                
+                socket.emit('answer', {
+                    call_id: callId,
+                    answer: answer
+                });
+            }
+        });
+        
+        socket.on('answer', async data => {
+            if (data.call_id === callId) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+            }
+        });
+        
+        socket.on('ice_candidate', async data => {
+            if (data.call_id === callId) {
+                try {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                } catch (err) {
+                    console.error('Error adding ICE candidate:', err);
+                }
+            }
+        });
+        
+        socket.on('call_message', data => {
+            if (data.call_id === callId) {
+                addMessage(data.message, data.sender, data.is_ai, data.timestamp);
+            }
+        });
+        
+        socket.on('ai_toggled', data => {
+            if (data.call_id === callId) {
+                if (data.active) {
+                    aiBadge.style.display = 'block';
+                } else {
+                    aiBadge.style.display = 'none';
+                }
+            }
+        });
+        
+        socket.on('call_ended', data => {
+            if (data.call_id === callId) {
+                alert('Call ended by other participant');
+                window.close();
+            }
+        });
+        
+        socket.on('user_joined', data => {
+            console.log(`${data.username} joined the call`);
+        });
+        
+        socket.on('user_left', data => {
+            console.log(`${data.username} left the call`);
+        });
+        
+        // Control functions
+        function toggleMute() {
+            const audioTracks = localStream.getAudioTracks();
+            if (audioTracks.length > 0) {
+                const enabled = !audioTracks[0].enabled;
+                audioTracks[0].enabled = enabled;
+                document.getElementById('toggle-mic').innerHTML = enabled ? '<i class="bi bi-mic"></i>' : '<i class="bi bi-mic-mute"></i>';
+            }
+        }
+        
+        function toggleCamera() {
+            const videoTracks = localStream.getVideoTracks();
+            if (videoTracks.length > 0) {
+                const enabled = !videoTracks[0].enabled;
+                videoTracks[0].enabled = enabled;
+                document.getElementById('toggle-camera').innerHTML = enabled ? '<i class="bi bi-camera-video"></i>' : '<i class="bi bi-camera-video-off"></i>';
+            }
+        }
+        
+        function toggleChat() {
+            const chatPanel = document.getElementById('chat-panel');
+            chatPanel.classList.toggle('open');
+        }
+        
+        function toggleAI() {
+            fetch(`/video-call/${callId}/ai-toggle`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.active) {
+                        aiBadge.style.display = 'block';
+                        addMessage('AI Assistant has joined the call', 'System', false);
+                    } else {
+                        aiBadge.style.display = 'none';
+                        addMessage('AI Assistant has left the call', 'System', false);
+                    }
+                }
+            });
+        }
+        
+        function endCall() {
+            fetch(`/video-call/${callId}/end`, {
+                method: 'POST'
+            })
+            .then(() => {
+                window.close();
+            });
+        }
+        
+        function addMessage(message, sender, isAI = false, timestamp = null) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isAI ? 'ai' : ''} ${sender === username ? 'self' : ''}`;
+            
+            const bubble = document.createElement('div');
+            bubble.className = 'bubble';
+            
+            const senderDiv = document.createElement('div');
+            senderDiv.className = 'sender';
+            senderDiv.textContent = isAI ? 'AI Assistant' : sender;
+            
+            const messageText = document.createElement('div');
+            messageText.textContent = message;
+            
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'timestamp';
+            timeDiv.textContent = timestamp ? new Date(timestamp).toLocaleTimeString() : new Date().toLocaleTimeString();
+            
+            bubble.appendChild(senderDiv);
+            bubble.appendChild(messageText);
+            bubble.appendChild(timeDiv);
+            messageDiv.appendChild(bubble);
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        function sendMessage() {
+            const message = chatInput.value.trim();
+            if (message) {
+                fetch(`/video-call/${callId}/message`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+                
+                addMessage(message, username);
+                chatInput.value = '';
+            }
+        }
+        
+        // Event listeners
+        document.getElementById('toggle-mic').addEventListener('click', toggleMute);
+        document.getElementById('toggle-camera').addEventListener('click', toggleCamera);
+        document.getElementById('toggle-chat').addEventListener('click', toggleChat);
+        document.getElementById('toggle-ai').addEventListener('click', toggleAI);
+        document.getElementById('end-call').addEventListener('click', endCall);
+        document.getElementById('send-message').addEventListener('click', sendMessage);
+        
+        chatInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        // Initialize call when page loads
+        initCall();
+        
+        // Handle page unload
+        window.addEventListener('beforeunload', function() {
+            if (peerConnection) {
+                peerConnection.close();
+            }
+        });
+    </script>
+</body>
+</html>
