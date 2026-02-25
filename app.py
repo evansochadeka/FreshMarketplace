@@ -272,6 +272,33 @@ def generate_receipt_number():
     """Generate unique receipt number for POS"""
     return f"REC-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
 
+def create_superuser():
+    """Create the superuser benedict431 if it doesn't exist"""
+    with app.app_context():
+        superuser = User.query.filter_by(username='benedict431').first()
+        if not superuser:
+            admin = User(
+                username='benedict431',
+                email='benedict431@admin.com',
+                password=generate_password_hash('28734495'),
+                role='admin',
+                phone_number='+254700000000',
+                location='Nairobi, Kenya',
+                profile_image='/static/images/default-profile.png',
+                business_name='Super Admin',
+                business_address='Admin Office'
+            )
+            db.session.add(admin)
+            
+            try:
+                db.session.commit()
+                print("✅ Superuser 'benedict431' created successfully!")
+            except Exception as e:
+                db.session.rollback()
+                print(f"❌ Error creating superuser: {e}")
+        else:
+            print("ℹ️ Superuser 'benedict431' already exists")
+
 # Routes
 @app.route('/')
 def index():
@@ -300,7 +327,9 @@ def products():
 def product_detail(id):
     product = Product.query.get_or_404(id)
     seller = User.query.get(product.seller_id)
-    return render_template('product_detail.html', product=product, seller=seller)
+    # Get related products (same category, different seller)
+    related_products = Product.query.filter_by(category=product.category, is_active=True).filter(Product.id != product.id).limit(4).all()
+    return render_template('product_detail.html', product=product, seller=seller, related_products=related_products)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -308,21 +337,28 @@ def register():
         username = request.form['username']
         email = request.form['email']
         password = request.form['password']
+        confirm_password = request.form.get('confirm_password')
         role = request.form['role']
         phone_number = request.form['phone_number']
         location = request.form.get('location', '')
         business_name = request.form.get('business_name', '') if role == 'seller' else None
         business_address = request.form.get('business_address', '') if role == 'seller' else None
         
+        # Validate passwords match
+        if password != confirm_password:
+            flash('Passwords do not match.', 'danger')
+            return redirect(url_for('register'))
+        
         # Handle profile image upload
         profile_image = '/static/images/default-profile.png'
         if 'profile_image' in request.files:
             file = request.files['profile_image']
-            if file and allowed_file(file.filename):
+            if file and file.filename and allowed_file(file.filename):
                 filename = secure_filename(f"{username}_{uuid.uuid4().hex[:8]}_{file.filename}")
                 file.save(os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], filename))
                 profile_image = f'/static/uploads/{filename}'
         
+        # Check if user exists
         if User.query.filter_by(username=username).first():
             flash('Username already exists.', 'danger')
             return redirect(url_for('register'))
@@ -331,6 +367,7 @@ def register():
             flash('Email already exists.', 'danger')
             return redirect(url_for('register'))
         
+        # Create new user
         user = User(
             username=username,
             email=email,
@@ -342,11 +379,16 @@ def register():
             business_name=business_name,
             business_address=business_address
         )
-        db.session.add(user)
-        db.session.commit()
         
-        flash('Registration successful! Please log in.', 'success')
-        return redirect(url_for('login'))
+        try:
+            db.session.add(user)
+            db.session.commit()
+            flash('Registration successful! Please log in.', 'success')
+            return redirect(url_for('login'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Registration failed: {str(e)}', 'danger')
+            return redirect(url_for('register'))
     
     return render_template('register.html')
 
@@ -357,13 +399,20 @@ def login():
         password = request.form['password']
         
         user = User.query.filter_by(username=username).first()
+        
         if user and check_password_hash(user.password, password):
             session['user_id'] = user.id
             session['username'] = user.username
             session['role'] = user.role
             session['profile_image'] = user.profile_image
-            flash('Login successful!', 'success')
             
+            # Get unread message count for badge
+            unread_count = Message.query.filter_by(receiver_id=user.id, is_read=False).count()
+            session['unread_count'] = unread_count
+            
+            flash(f'Welcome back, {user.username}!', 'success')
+            
+            # Redirect based on role
             if user.role == 'admin':
                 return redirect(url_for('admin_dashboard'))
             elif user.role == 'rider':
@@ -372,8 +421,9 @@ def login():
                 return redirect(url_for('seller_dashboard'))
             else:
                 return redirect(url_for('index'))
-        
-        flash('Invalid credentials.', 'danger')
+        else:
+            flash('Invalid username or password.', 'danger')
+            return redirect(url_for('login'))
     
     return render_template('login.html')
 
@@ -501,7 +551,7 @@ def add_product():
         image_url = '/static/images/default-product.png'
         if 'product_image' in request.files:
             file = request.files['product_image']
-            if file and allowed_file(file.filename):
+            if file and file.filename and allowed_file(file.filename):
                 filename = secure_filename(f"{name}_{uuid.uuid4().hex[:8]}_{file.filename}")
                 file.save(os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], filename))
                 image_url = f'/static/uploads/{filename}'
@@ -561,7 +611,7 @@ def edit_product(id):
         # Handle image upload
         if 'product_image' in request.files:
             file = request.files['product_image']
-            if file and allowed_file(file.filename):
+            if file and file.filename and allowed_file(file.filename):
                 filename = secure_filename(f"{product.name}_{uuid.uuid4().hex[:8]}_{file.filename}")
                 file.save(os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], filename))
                 product.image_url = f'/static/uploads/{filename}'
@@ -1128,7 +1178,7 @@ def update_delivery_status(id):
         
         # Update sale statuses
         for item in order.items:
-            sale = Sale.query.filter_by(order_id=order.id, product_id=item.product_id).first()
+            sale = Sale.query.filter_by(seller_id=item.seller_id, product_id=item.product_id).filter(Sale.sale_date >= order.created_at).first()
             if sale:
                 sale.status = 'completed'
     
@@ -1156,7 +1206,12 @@ def chat_with_user(receiver_id):
     unread = Message.query.filter_by(receiver_id=session['user_id'], sender_id=receiver_id, is_read=False).all()
     for msg in unread:
         msg.is_read = True
-    db.session.commit()
+    
+    # Update session unread count
+    if unread:
+        db.session.commit()
+        total_unread = Message.query.filter_by(receiver_id=session['user_id'], is_read=False).count()
+        session['unread_count'] = total_unread
     
     return render_template('chat.html', 
                          receiver=receiver, 
@@ -1183,6 +1238,8 @@ def send_message():
     
     db.session.add(msg)
     db.session.commit()
+    
+    # Update unread count for receiver (will be fetched on next poll)
     
     return redirect(url_for('chat_with_user', receiver_id=receiver_id, product_id=product_id))
 
@@ -1229,37 +1286,55 @@ def community():
         title = request.form.get('title', '')
         post_type = request.form.get('post_type', 'general')
         
+        if not content.strip():
+            flash('Post content cannot be empty.', 'danger')
+            return redirect(url_for('community'))
+        
         post = Post(
             user_id=session['user_id'],
-            content=content,
-            title=title,
+            content=content.strip(),
+            title=title.strip() if title else None,
             post_type=post_type
         )
-        db.session.add(post)
-        db.session.commit()
-        flash('Post added to community!', 'success')
+        
+        try:
+            db.session.add(post)
+            db.session.commit()
+            flash('Post added to community!', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash('Error creating post. Please try again.', 'danger')
+            
         return redirect(url_for('community'))
     
     # Filter posts
     filter_type = request.args.get('filter', 'all')
+    page = request.args.get('page', 1, type=int)
+    per_page = 10
+    
     query = Post.query
     
     if filter_type != 'all':
         query = query.filter_by(post_type=filter_type)
     
-    posts = query.order_by(Post.created_at.desc()).all()
+    posts = query.order_by(Post.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
     
     # Get all users for reviews
-    users = User.query.filter(User.id != session['user_id']).all()
+    users = User.query.filter(User.id != session['user_id']).limit(10).all()
     
     # Get post types for filter
     post_types = ['general', 'question', 'suggestion', 'feedback']
     
+    # Get recent activity
+    recent_posts = Post.query.order_by(Post.created_at.desc()).limit(5).all()
+    
     return render_template('community.html', 
-                         posts=posts, 
+                         posts=posts.items,
+                         pagination=posts,
                          users=users,
                          post_types=post_types,
-                         current_filter=filter_type)
+                         current_filter=filter_type,
+                         recent_posts=recent_posts)
 
 @app.route('/post/<int:id>', methods=['GET', 'POST'])
 @login_required
@@ -1267,20 +1342,32 @@ def view_post(id):
     post = Post.query.get_or_404(id)
     
     if request.method == 'POST':
-        # Add comment
         content = request.form['content']
+        
+        if not content.strip():
+            flash('Comment cannot be empty.', 'danger')
+            return redirect(url_for('view_post', id=post.id))
+        
         comment = Comment(
             post_id=post.id,
             user_id=session['user_id'],
-            content=content
+            content=content.strip()
         )
-        db.session.add(comment)
-        db.session.commit()
-        flash('Comment added!', 'success')
+        
+        try:
+            db.session.add(comment)
+            db.session.commit()
+            flash('Comment added!', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash('Error adding comment.', 'danger')
+            
         return redirect(url_for('view_post', id=post.id))
     
-    # Get comments
-    comments = Comment.query.filter_by(post_id=post.id).order_by(Comment.created_at).all()
+    # Get comments with user info
+    comments = Comment.query.filter_by(post_id=post.id)\
+                           .order_by(Comment.created_at)\
+                           .all()
     
     return render_template('view_post.html', post=post, comments=comments)
 
@@ -1289,8 +1376,34 @@ def view_post(id):
 def like_post(id):
     post = Post.query.get_or_404(id)
     post.likes += 1
-    db.session.commit()
+    
+    try:
+        db.session.commit()
+        flash('Post liked!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash('Error liking post.', 'danger')
+    
     return redirect(request.referrer or url_for('community'))
+
+@app.route('/post/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_post(id):
+    post = Post.query.get_or_404(id)
+    
+    # Check if user owns the post or is admin
+    if post.user_id != session['user_id'] and session['role'] != 'admin':
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    try:
+        # Delete comments first
+        Comment.query.filter_by(post_id=id).delete()
+        db.session.delete(post)
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # ===== REVIEW SYSTEM =====
 
@@ -1299,6 +1412,12 @@ def like_post(id):
 def review_user(user_id):
     reviewed_user = User.query.get_or_404(user_id)
     order_id = request.args.get('order_id')
+    
+    # Check if already reviewed
+    existing_review = Review.query.filter_by(reviewer_id=session['user_id'], reviewed_id=user_id).first()
+    if existing_review and not order_id:
+        flash('You have already reviewed this user.', 'warning')
+        return redirect(url_for('community'))
     
     if request.method == 'POST':
         review = Review(
@@ -1323,32 +1442,89 @@ def review_user(user_id):
 def ai_assistant():
     response_text = None
     user_message = ""
+    suggestions = []
     
     if request.method == 'POST':
         user_message = request.form['message']
+        
         if co:
             try:
                 # Get context about the user
                 user = User.query.get(session['user_id'])
-                recent_orders = Order.query.filter_by(user_id=user.id).limit(5).all()
+                
+                # Get user's recent orders for context
+                recent_orders = Order.query.filter_by(user_id=user.id).order_by(Order.created_at.desc()).limit(3).all()
                 
                 # Build context for AI
                 context = f"The user is a {user.role} named {user.username}. "
                 if recent_orders:
-                    context += f"They have {len(recent_orders)} recent orders. "
+                    order_list = []
+                    for order in recent_orders:
+                        items = [f"{item.quantity}x {item.product.name}" for item in order.items]
+                        order_list.append(f"Order #{order.id}: {', '.join(items)}")
+                    context += f"They recently ordered: {'; '.join(order_list)}. "
+                
+                # Get marketplace stats
+                product_count = Product.query.filter_by(is_active=True).count()
+                seller_count = User.query.filter_by(role='seller').count()
+                context += f"The marketplace has {product_count} products from {seller_count} sellers. "
                 
                 response = co.chat(
                     message=user_message,
                     model="command",
-                    preamble=f"You are a helpful assistant for a fresh food marketplace. {context}"
+                    preamble=f"You are a helpful assistant for Fresh Marketplace, a food delivery platform. {context}",
+                    temperature=0.7
                 )
-                response_text = response.text
+                
+                if hasattr(response, 'text'):
+                    response_text = response.text
+                elif isinstance(response, dict) and 'text' in response:
+                    response_text = response['text']
+                else:
+                    response_text = str(response)
+                    
+            except ImportError:
+                response_text = "Cohere library not properly configured."
             except Exception as e:
-                response_text = f"Error communicating with AI: {str(e)}"
+                response_text = f"AI service temporarily unavailable. Please try again later."
+                print(f"AI Error: {str(e)}")
         else:
-            response_text = "AI assistant is currently unavailable. Please contact support."
+            response_text = "AI assistant is currently unavailable. Please contact support if this persists."
     
-    return render_template('ai_assistant.html', response=response_text, user_message=user_message)
+    # Generate contextual suggestions
+    suggestions = [
+        "What are today's specials?",
+        "How do I track my order?",
+        "What payment methods do you accept?",
+        "How do I become a seller?",
+        "Tell me about your delivery policy",
+        "Do you have any discounts?"
+    ]
+    
+    return render_template('ai_assistant.html', 
+                         response=response_text, 
+                         user_message=user_message,
+                         suggestions=suggestions)
+
+# ===== NOTIFICATION API =====
+
+@app.route('/api/notifications')
+@login_required
+def get_notifications():
+    user_id = session['user_id']
+    
+    # Get unread messages count
+    unread_count = Message.query.filter_by(receiver_id=user_id, is_read=False).count()
+    
+    # Get latest unread message
+    latest_message = Message.query.filter_by(receiver_id=user_id, is_read=False)\
+                                 .order_by(Message.created_at.desc()).first()
+    
+    return jsonify({
+        'unread_count': unread_count,
+        'latest_message': latest_message.message if latest_message else None,
+        'sender': latest_message.sender.username if latest_message else None
+    })
 
 # ===== ADMIN DASHBOARD =====
 
@@ -1473,6 +1649,10 @@ with app.app_context():
         db.create_all()
         print("✅ Database tables created/verified successfully!")
         
+        # Create superuser
+        create_superuser()
+        
+        # Check if we need to seed sample data
         if not User.query.filter_by(username='admin').first():
             print("📦 Adding sample data...")
             init_db()
