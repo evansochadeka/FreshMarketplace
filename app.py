@@ -54,7 +54,7 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(200), nullable=False)
-    role = db.Column(db.String(20), nullable=False)  # buyer, rider, admin, seller
+    role = db.Column(db.String(20), nullable=False)
     phone_number = db.Column(db.String(20), nullable=False)
     whatsapp_number = db.Column(db.String(20))
     location = db.Column(db.String(200))
@@ -67,24 +67,15 @@ class User(db.Model):
     last_seen = db.Column(db.DateTime, default=datetime.utcnow)
     is_online = db.Column(db.Boolean, default=False)
     
-    # Relationships
     products = db.relationship('Product', back_populates='seller', lazy=True)
     sales = db.relationship('Sale', back_populates='seller', foreign_keys='Sale.seller_id', lazy=True)
     offline_sales = db.relationship('OfflineSale', back_populates='seller', lazy=True)
     customers = db.relationship('Customer', back_populates='seller', lazy=True)
-    locations = db.relationship('UserLocation', back_populates='user', lazy=True)
     sent_messages = db.relationship('Message', foreign_keys='Message.sender_id', back_populates='sender', lazy=True)
     received_messages = db.relationship('Message', foreign_keys='Message.receiver_id', back_populates='receiver', lazy=True)
     posts = db.relationship('Post', back_populates='author', lazy=True)
     reviews_given = db.relationship('Review', foreign_keys='Review.reviewer_id', back_populates='reviewer', lazy=True)
     reviews_received = db.relationship('Review', foreign_keys='Review.reviewed_id', back_populates='reviewed', lazy=True)
-    initiated_calls = db.relationship('VideoCall', foreign_keys='VideoCall.initiator_id', back_populates='initiator', lazy=True)
-    received_calls = db.relationship('VideoCall', foreign_keys='VideoCall.receiver_id', back_populates='receiver', lazy=True)
-    inventory_logs = db.relationship('InventoryLog', back_populates='seller', lazy=True)
-    product_inquiries = db.relationship('ProductInquiry', foreign_keys='ProductInquiry.buyer_id', back_populates='buyer', lazy=True)
-    received_inquiries = db.relationship('ProductInquiry', foreign_keys='ProductInquiry.seller_id', back_populates='seller', lazy=True)
-    rider_recommendations = db.relationship('RiderRecommendation', foreign_keys='RiderRecommendation.buyer_id', back_populates='buyer', lazy=True)
-    received_recommendations = db.relationship('RiderRecommendation', foreign_keys='RiderRecommendation.seller_id', back_populates='seller', lazy=True)
 
 class Product(db.Model):
     __tablename__ = 'product'
@@ -107,12 +98,10 @@ class Product(db.Model):
     video_call_enabled = db.Column(db.Boolean, default=True)
     virtual_tour_url = db.Column(db.String(500))
     
-    # Relationships
     seller = db.relationship('User', back_populates='products')
     order_items = db.relationship('OrderItem', back_populates='product', lazy=True)
     reviews = db.relationship('Review', back_populates='product', lazy=True)
     inventory_logs = db.relationship('InventoryLog', back_populates='product', lazy=True)
-    inquiries = db.relationship('ProductInquiry', back_populates='product', lazy=True)
 
 class Order(db.Model):
     __tablename__ = 'order'
@@ -133,12 +122,10 @@ class Order(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime)
     
-    # Relationships
     user = db.relationship('User', foreign_keys=[user_id], backref='customer_orders')
     rider = db.relationship('User', foreign_keys=[rider_id], backref='rider_deliveries')
     seller = db.relationship('User', foreign_keys=[seller_id], backref='seller_orders')
     items = db.relationship('OrderItem', back_populates='order', lazy=True)
-    tracking = db.relationship('OrderTracking', back_populates='order', lazy=True)
     reviews = db.relationship('Review', back_populates='order', lazy=True)
 
 class OrderItem(db.Model):
@@ -151,7 +138,6 @@ class OrderItem(db.Model):
     price = db.Column(db.Float, nullable=False)
     seller_price = db.Column(db.Float, nullable=False)
     
-    # Relationships
     order = db.relationship('Order', back_populates='items')
     product = db.relationship('Product', back_populates='order_items')
     seller = db.relationship('User', foreign_keys=[seller_id])
@@ -172,10 +158,97 @@ class Sale(db.Model):
     payment_method = db.Column(db.String(50))
     notes = db.Column(db.Text)
     
-    # Relationships
     seller = db.relationship('User', back_populates='sales')
     product = db.relationship('Product')
     customer = db.relationship('Customer', back_populates='purchases')
+
+class Customer(db.Model):
+    __tablename__ = 'customer'
+    id = db.Column(db.Integer, primary_key=True)
+    seller_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    phone = db.Column(db.String(20))
+    whatsapp = db.Column(db.String(20))
+    email = db.Column(db.String(120))
+    address = db.Column(db.String(200))
+    total_purchases = db.Column(db.Float, default=0)
+    visit_count = db.Column(db.Integer, default=0)
+    last_visit = db.Column(db.DateTime)
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    seller = db.relationship('User', back_populates='customers')
+    purchases = db.relationship('Sale', back_populates='customer', lazy=True)
+
+class Review(db.Model):
+    __tablename__ = 'review'
+    id = db.Column(db.Integer, primary_key=True)
+    reviewer_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    reviewed_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'))
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'))
+    rating = db.Column(db.Integer, nullable=False)
+    comment = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    reviewer = db.relationship('User', foreign_keys=[reviewer_id], back_populates='reviews_given')
+    reviewed = db.relationship('User', foreign_keys=[reviewed_id], back_populates='reviews_received')
+    product = db.relationship('Product', back_populates='reviews')
+    order = db.relationship('Order', back_populates='reviews')
+
+class Post(db.Model):
+    __tablename__ = 'post'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    title = db.Column(db.String(200))
+    post_type = db.Column(db.String(20), default='general')
+    likes = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    author = db.relationship('User', back_populates='posts')
+    comments = db.relationship('Comment', back_populates='post', lazy=True)
+
+class Comment(db.Model):
+    __tablename__ = 'comment'
+    id = db.Column(db.Integer, primary_key=True)
+    post_id = db.Column(db.Integer, db.ForeignKey('post.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    post = db.relationship('Post', back_populates='comments')
+    user = db.relationship('User')
+
+class Message(db.Model):
+    __tablename__ = 'message'
+    id = db.Column(db.Integer, primary_key=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'))
+    message = db.Column(db.Text, nullable=False)
+    is_read = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    sender = db.relationship('User', foreign_keys=[sender_id], back_populates='sent_messages')
+    receiver = db.relationship('User', foreign_keys=[receiver_id], back_populates='received_messages')
+    product = db.relationship('Product')
+
+class InventoryLog(db.Model):
+    __tablename__ = 'inventory_log'
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    seller_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    previous_stock = db.Column(db.Integer)
+    new_stock = db.Column(db.Integer)
+    change = db.Column(db.Integer)
+    reason = db.Column(db.String(100))
+    reference_id = db.Column(db.Integer)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    product = db.relationship('Product', back_populates='inventory_logs')
+    seller = db.relationship('User', backref='inventory_logs')
 
 class OfflineSale(db.Model):
     __tablename__ = 'offline_sale'
@@ -193,192 +266,7 @@ class OfflineSale(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     receipt_number = db.Column(db.String(50), unique=True)
     
-    # Relationships
-    seller = db.relationship('User', back_populates='offline_sales')
-
-class Customer(db.Model):
-    __tablename__ = 'customer'
-    id = db.Column(db.Integer, primary_key=True)
-    seller_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    name = db.Column(db.String(100), nullable=False)
-    phone = db.Column(db.String(20))
-    whatsapp = db.Column(db.String(20))
-    email = db.Column(db.String(120))
-    address = db.Column(db.String(200))
-    total_purchases = db.Column(db.Float, default=0)
-    visit_count = db.Column(db.Integer, default=0)
-    last_visit = db.Column(db.DateTime)
-    notes = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    seller = db.relationship('User', back_populates='customers')
-    purchases = db.relationship('Sale', back_populates='customer', lazy=True)
-
-class Review(db.Model):
-    __tablename__ = 'review'
-    id = db.Column(db.Integer, primary_key=True)
-    reviewer_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    reviewed_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    product_id = db.Column(db.Integer, db.ForeignKey('product.id'))
-    order_id = db.Column(db.Integer, db.ForeignKey('order.id'))
-    rating = db.Column(db.Integer, nullable=False)
-    comment = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    reviewer = db.relationship('User', foreign_keys=[reviewer_id], back_populates='reviews_given')
-    reviewed = db.relationship('User', foreign_keys=[reviewed_id], back_populates='reviews_received')
-    product = db.relationship('Product', back_populates='reviews')
-    order = db.relationship('Order', back_populates='reviews')
-
-class Post(db.Model):
-    __tablename__ = 'post'
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    content = db.Column(db.Text, nullable=False)
-    title = db.Column(db.String(200))
-    post_type = db.Column(db.String(20), default='general')
-    likes = db.Column(db.Integer, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # Relationships
-    author = db.relationship('User', back_populates='posts')
-    comments = db.relationship('Comment', back_populates='post', lazy=True)
-
-class Comment(db.Model):
-    __tablename__ = 'comment'
-    id = db.Column(db.Integer, primary_key=True)
-    post_id = db.Column(db.Integer, db.ForeignKey('post.id'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    content = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    post = db.relationship('Post', back_populates='comments')
-    user = db.relationship('User')
-
-class Message(db.Model):
-    __tablename__ = 'message'
-    id = db.Column(db.Integer, primary_key=True)
-    sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    product_id = db.Column(db.Integer, db.ForeignKey('product.id'))
-    message = db.Column(db.Text, nullable=False)
-    is_read = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    sender = db.relationship('User', foreign_keys=[sender_id], back_populates='sent_messages')
-    receiver = db.relationship('User', foreign_keys=[receiver_id], back_populates='received_messages')
-    product = db.relationship('Product')
-
-class UserLocation(db.Model):
-    __tablename__ = 'user_location'
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    latitude = db.Column(db.Float, nullable=False)
-    longitude = db.Column(db.Float, nullable=False)
-    accuracy = db.Column(db.Float)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    user = db.relationship('User', back_populates='locations')
-
-class OrderTracking(db.Model):
-    __tablename__ = 'order_tracking'
-    id = db.Column(db.Integer, primary_key=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=False)
-    rider_lat = db.Column(db.Float)
-    rider_lng = db.Column(db.Float)
-    status = db.Column(db.String(20))
-    message = db.Column(db.String(200))
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    order = db.relationship('Order', back_populates='tracking')
-
-class VideoCall(db.Model):
-    __tablename__ = 'video_call'
-    id = db.Column(db.Integer, primary_key=True)
-    room_id = db.Column(db.String(100), unique=True, nullable=False)
-    initiator_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    receiver_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    product_id = db.Column(db.Integer, db.ForeignKey('product.id'))
-    status = db.Column(db.String(20), default='pending')
-    started_at = db.Column(db.DateTime)
-    ended_at = db.Column(db.DateTime)
-    ai_assistant_active = db.Column(db.Boolean, default=False)
-    recording_enabled = db.Column(db.Boolean, default=False)
-    
-    # Relationships
-    initiator = db.relationship('User', foreign_keys=[initiator_id], back_populates='initiated_calls')
-    receiver = db.relationship('User', foreign_keys=[receiver_id], back_populates='received_calls')
-    product = db.relationship('Product')
-    messages = db.relationship('VideoCallMessage', back_populates='call', lazy=True)
-
-class VideoCallMessage(db.Model):
-    __tablename__ = 'video_call_message'
-    id = db.Column(db.Integer, primary_key=True)
-    call_id = db.Column(db.Integer, db.ForeignKey('video_call.id'), nullable=False)
-    sender_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    message = db.Column(db.Text)
-    is_ai = db.Column(db.Boolean, default=False)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    call = db.relationship('VideoCall', back_populates='messages')
-    sender = db.relationship('User')
-
-class InventoryLog(db.Model):
-    __tablename__ = 'inventory_log'
-    id = db.Column(db.Integer, primary_key=True)
-    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
-    seller_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    previous_stock = db.Column(db.Integer)
-    new_stock = db.Column(db.Integer)
-    change = db.Column(db.Integer)
-    reason = db.Column(db.String(100))
-    reference_id = db.Column(db.Integer)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    product = db.relationship('Product', back_populates='inventory_logs')
-    seller = db.relationship('User', back_populates='inventory_logs')
-
-class ProductInquiry(db.Model):
-    __tablename__ = 'product_inquiry'
-    id = db.Column(db.Integer, primary_key=True)
-    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
-    buyer_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    seller_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    question = db.Column(db.Text, nullable=False)
-    answer = db.Column(db.Text)
-    status = db.Column(db.String(20), default='pending')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    answered_at = db.Column(db.DateTime)
-    
-    # Relationships
-    product = db.relationship('Product', back_populates='inquiries')
-    buyer = db.relationship('User', foreign_keys=[buyer_id], back_populates='product_inquiries')
-    seller = db.relationship('User', foreign_keys=[seller_id], back_populates='received_inquiries')
-
-class RiderRecommendation(db.Model):
-    __tablename__ = 'rider_recommendation'
-    id = db.Column(db.Integer, primary_key=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('order.id'))
-    buyer_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    seller_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    recommended_rider_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    reason = db.Column(db.Text)
-    status = db.Column(db.String(20), default='pending')
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # Relationships
-    buyer = db.relationship('User', foreign_keys=[buyer_id], back_populates='rider_recommendations')
-    seller = db.relationship('User', foreign_keys=[seller_id], back_populates='received_recommendations')
-    recommended_rider = db.relationship('User', foreign_keys=[recommended_rider_id])
+    seller = db.relationship('User', backref='offline_sales')
 
 # ===== HELPER FUNCTIONS =====
 
@@ -408,35 +296,11 @@ def role_required(role):
         return decorated_function
     return decorator
 
-def admin_or_self_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            flash('Please log in to access this page.', 'warning')
-            return redirect(url_for('login'))
-        user = User.query.get(session['user_id'])
-        target_id = kwargs.get('user_id')
-        if not user or (user.role != 'admin' and user.id != target_id):
-            flash('Access denied.', 'danger')
-            return redirect(url_for('index'))
-        return f(*args, **kwargs)
-    return decorated_function
-
 def calculate_price_with_fees(base_price):
-    """Calculate price including 10% rider fee and 10% platform fee"""
     rider_fee = round(base_price * 0.10, 2)
     platform_fee = round(base_price * 0.10, 2)
     final_price = round(base_price + rider_fee + platform_fee, 2)
     return final_price, rider_fee, platform_fee
-
-def find_nearest_rider(location):
-    try:
-        riders = User.query.filter_by(role='rider', is_online=True).all()
-        if not riders:
-            return None
-        return riders[0] if riders else None
-    except:
-        return None
 
 def log_inventory_change(product_id, seller_id, previous_stock, new_stock, reason, reference_id=None):
     try:
@@ -455,12 +319,6 @@ def log_inventory_change(product_id, seller_id, previous_stock, new_stock, reaso
         db.session.rollback()
         logger.error(f"Inventory log error: {e}")
 
-def generate_receipt_number():
-    return f"REC-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
-
-def generate_video_room_id():
-    return f"room-{uuid.uuid4().hex[:12]}"
-
 # ===== ERROR HANDLERS =====
 
 @app.errorhandler(500)
@@ -472,15 +330,6 @@ def internal_error(error):
 @app.errorhandler(404)
 def not_found_error(error):
     return render_template('404.html'), 404
-
-# ===== CONTEXT PROCESSORS =====
-
-@app.context_processor
-def inject_available_riders():
-    if 'user_id' in session:
-        available_riders = User.query.filter_by(role='rider', is_online=True).limit(5).all()
-        return dict(available_riders=available_riders)
-    return dict(available_riders=[])
 
 # ===== AUTHENTICATION ROUTES =====
 
@@ -620,15 +469,12 @@ def products():
     try:
         category = request.args.get('category')
         search = request.args.get('search')
-        seller_id = request.args.get('seller')
         
         query = Product.query.filter_by(is_active=True)
         if category:
             query = query.filter_by(category=category)
         if search:
             query = query.filter(Product.name.ilike(f'%{search}%'))
-        if seller_id:
-            query = query.filter_by(seller_id=seller_id)
         
         products = query.order_by(Product.created_at.desc()).all()
         categories = db.session.query(Product.category).distinct().all()
@@ -645,116 +491,13 @@ def product_detail(id):
         product = Product.query.get_or_404(id)
         seller = User.query.get(product.seller_id)
         related_products = Product.query.filter_by(category=product.category, is_active=True).filter(Product.id != product.id).limit(4).all()
-        product_inquiries = ProductInquiry.query.filter_by(product_id=id, buyer_id=session.get('user_id')).all() if 'user_id' in session else []
-        return render_template('product_detail.html', 
-                             product=product, 
-                             seller=seller, 
-                             related_products=related_products,
-                             product_inquiries=product_inquiries)
+        return render_template('product_detail.html', product=product, seller=seller, related_products=related_products)
     except Exception as e:
         logger.error(f"Product detail error: {e}")
         flash('Product not found.', 'danger')
         return redirect(url_for('products'))
 
-# ===== PRODUCT INQUIRY ROUTES =====
-
-@app.route('/product/<int:id>/inquiry', methods=['POST'])
-@login_required
-def product_inquiry(id):
-    product = Product.query.get_or_404(id)
-    question = request.form.get('question')
-    
-    if not question:
-        flash('Question cannot be empty.', 'danger')
-        return redirect(url_for('product_detail', id=id))
-    
-    inquiry = ProductInquiry(
-        product_id=id,
-        buyer_id=session['user_id'],
-        seller_id=product.seller_id,
-        question=question
-    )
-    
-    try:
-        db.session.add(inquiry)
-        db.session.commit()
-        flash('Your question has been sent to the seller!', 'success')
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Inquiry error: {e}")
-        flash('Error sending question. Please try again.', 'danger')
-    
-    return redirect(url_for('product_detail', id=id))
-
-@app.route('/product/<int:id>/recommend-rider', methods=['POST'])
-@login_required
-def recommend_rider(id):
-    product = Product.query.get_or_404(id)
-    rider_id = request.form.get('rider_id')
-    reason = request.form.get('reason', '')
-    
-    if not rider_id:
-        flash('Please select a rider.', 'danger')
-        return redirect(url_for('product_detail', id=id))
-    
-    rider = User.query.get(rider_id)
-    if not rider or rider.role != 'rider':
-        flash('Invalid rider selected.', 'danger')
-        return redirect(url_for('product_detail', id=id))
-    
-    recommendation = RiderRecommendation(
-        buyer_id=session['user_id'],
-        seller_id=product.seller_id,
-        recommended_rider_id=rider_id,
-        reason=reason
-    )
-    
-    try:
-        db.session.add(recommendation)
-        db.session.commit()
-        flash(f'Rider {rider.username} recommended to seller!', 'success')
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Recommendation error: {e}")
-        flash('Error sending recommendation. Please try again.', 'danger')
-    
-    return redirect(url_for('product_detail', id=id))
-
-@app.route('/seller/inquiries')
-@role_required('seller')
-def seller_inquiries():
-    seller_id = session['user_id']
-    inquiries = ProductInquiry.query.filter_by(seller_id=seller_id).order_by(ProductInquiry.created_at.desc()).all()
-    return render_template('seller_inquiries.html', inquiries=inquiries)
-
-@app.route('/inquiry/<int:id>/answer', methods=['POST'])
-@login_required
-def answer_inquiry(id):
-    inquiry = ProductInquiry.query.get_or_404(id)
-    
-    if inquiry.seller_id != session['user_id']:
-        flash('Access denied.', 'danger')
-        return redirect(url_for('seller_inquiries'))
-    
-    answer = request.form.get('answer')
-    if not answer:
-        flash('Answer cannot be empty.', 'danger')
-        return redirect(url_for('seller_inquiries'))
-    
-    inquiry.answer = answer
-    inquiry.status = 'answered'
-    inquiry.answered_at = datetime.utcnow()
-    
-    try:
-        db.session.commit()
-        flash('Answer sent to buyer!', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash('Error sending answer.', 'danger')
-    
-    return redirect(url_for('seller_inquiries'))
-
-# ===== SELLER DASHBOARD & CRM FEATURES =====
+# ===== SELLER DASHBOARD - FIXED WITH ROBUST ERROR HANDLING =====
 
 @app.route('/seller/dashboard')
 @role_required('seller')
@@ -769,36 +512,39 @@ def seller_dashboard():
         # Get seller's products
         products = Product.query.filter_by(seller_id=seller.id, is_active=True).all()
         
-        # Get sales data
-        today = datetime.now().date()
+        # Basic statistics
+        total_products = len(products)
+        total_stock = sum(p.stock for p in products) if products else 0
+        low_stock_count = sum(1 for p in products if p.stock <= p.low_stock_threshold) if products else 0
         
-        # Today's sales
+        # Get sales data safely
+        today = datetime.now().date()
+        today_sales = 0
+        total_sales = 0
         try:
             today_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.total_price), 0)).filter(
                 Sale.seller_id == seller.id,
                 db.func.date(Sale.sale_date) == today
             ).scalar() or 0
         except:
-            today_sales = 0
+            pass
         
-        # Total sales
         try:
             total_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.total_price), 0)).filter(
                 Sale.seller_id == seller.id
             ).scalar() or 0
         except:
-            total_sales = 0
+            pass
         
-        # Recent orders
+        # Get recent orders
+        recent_orders = []
         try:
             recent_orders = Order.query.filter_by(seller_id=seller.id).order_by(Order.created_at.desc()).limit(5).all()
         except:
-            recent_orders = []
+            pass
         
-        # Low stock alerts
-        low_stock_products = [p for p in products if p.stock <= p.low_stock_threshold]
-        
-        # Top products
+        # Get top products
+        top_products = []
         try:
             top_products = db.session.query(
                 Product, db.func.coalesce(db.func.sum(OrderItem.quantity), 0).label('total_sold')
@@ -806,27 +552,29 @@ def seller_dashboard():
                 Product.seller_id == seller.id
             ).group_by(Product.id).order_by(db.desc('total_sold')).limit(5).all()
         except:
-            top_products = []
+            pass
         
-        # Recent customers
+        # Get recent customers - FIXED with error handling
+        recent_customers = []
         try:
             recent_customers = Customer.query.filter_by(seller_id=seller.id).order_by(Customer.last_visit.desc()).limit(5).all()
+        except Exception as e:
+            logger.warning(f"Could not fetch recent customers: {e}")
+        
+        # Get unread messages
+        unread_messages = 0
+        try:
+            unread_messages = Message.query.filter_by(receiver_id=seller.id, is_read=False).count()
         except:
-            recent_customers = []
-        
-        # Unread messages
-        unread_messages = Message.query.filter_by(receiver_id=seller.id, is_read=False).count()
-        
-        # Pending inquiries
-        pending_inquiries = ProductInquiry.query.filter_by(seller_id=seller.id, status='pending').count()
+            pass
         
         stats = {
-            'total_products': len(products),
+            'total_products': total_products,
+            'total_stock': total_stock,
+            'low_stock_count': low_stock_count,
             'total_sales': float(total_sales),
             'today_sales': float(today_sales),
-            'low_stock_count': len(low_stock_products),
-            'unread_messages': unread_messages,
-            'pending_inquiries': pending_inquiries
+            'unread_messages': unread_messages
         }
         
         return render_template('seller_dashboard.html', 
@@ -834,11 +582,12 @@ def seller_dashboard():
                              products=products,
                              stats=stats,
                              recent_orders=recent_orders,
-                             low_stock_products=low_stock_products,
+                             low_stock_products=[p for p in products if p.stock <= p.low_stock_threshold],
                              top_products=top_products,
                              recent_customers=recent_customers)
+                             
     except Exception as e:
-        logger.error(f"Seller dashboard error: {e}")
+        logger.error(f"Seller dashboard error: {str(e)}")
         flash('Error loading dashboard. Please try again.', 'danger')
         return redirect(url_for('index'))
 
@@ -847,19 +596,8 @@ def seller_dashboard():
 def seller_products():
     try:
         seller = User.query.get(session['user_id'])
-        show_all = request.args.get('show_all', 'false').lower() == 'true'
-        
-        if show_all:
-            products = Product.query.filter_by(is_active=True).all()
-            comparison_mode = True
-        else:
-            products = Product.query.filter_by(seller_id=seller.id, is_active=True).all()
-            comparison_mode = False
-        
-        return render_template('seller_products.html', 
-                             products=products, 
-                             seller=seller,
-                             comparison_mode=comparison_mode)
+        products = Product.query.filter_by(seller_id=seller.id, is_active=True).all()
+        return render_template('seller_products.html', products=products, seller=seller)
     except Exception as e:
         logger.error(f"Seller products error: {e}")
         flash('Error loading products.', 'danger')
@@ -875,13 +613,8 @@ def add_product():
             base_price = float(request.form['base_price'])
             category = request.form['category']
             stock = int(request.form['stock'])
-            sku = request.form.get('sku', f"SKU-{uuid.uuid4().hex[:8].upper()}")
-            barcode = request.form.get('barcode', '')
-            low_stock_threshold = int(request.form.get('low_stock_threshold', 5))
-            video_call_enabled = request.form.get('video_call_enabled') == 'on'
             
-            # Calculate price with fees
-            final_price, rider_fee, platform_fee = calculate_price_with_fees(base_price)
+            final_price, _, _ = calculate_price_with_fees(base_price)
             
             # Handle image upload
             image_url = '/static/images/default-product.png'
@@ -894,16 +627,6 @@ def add_product():
             elif request.form.get('image_url'):
                 image_url = request.form['image_url']
             
-            # Handle additional images
-            additional_images = []
-            if 'additional_images' in request.files:
-                files = request.files.getlist('additional_images')
-                for file in files:
-                    if file and file.filename and allowed_file(file.filename):
-                        filename = secure_filename(f"{name}_extra_{uuid.uuid4().hex[:8]}_{file.filename}")
-                        file.save(os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], filename))
-                        additional_images.append(f'/static/uploads/{filename}')
-            
             product = Product(
                 name=name,
                 description=description,
@@ -911,13 +634,10 @@ def add_product():
                 price=final_price,
                 category=category,
                 image_url=image_url,
-                additional_images=additional_images,
                 stock=stock,
-                sku=sku,
-                barcode=barcode,
+                sku=f"SKU-{uuid.uuid4().hex[:8].upper()}",
                 seller_id=session['user_id'],
-                low_stock_threshold=low_stock_threshold,
-                video_call_enabled=video_call_enabled
+                low_stock_threshold=5
             )
             
             db.session.add(product)
@@ -956,10 +676,6 @@ def edit_product(id):
             product.price = final_price
             product.category = request.form['category']
             product.stock = int(request.form['stock'])
-            product.sku = request.form.get('sku', product.sku)
-            product.barcode = request.form.get('barcode', '')
-            product.low_stock_threshold = int(request.form.get('low_stock_threshold', 5))
-            product.video_call_enabled = request.form.get('video_call_enabled') == 'on'
             
             if 'product_image' in request.files:
                 file = request.files['product_image']
@@ -967,8 +683,6 @@ def edit_product(id):
                     filename = secure_filename(f"{product.name}_{uuid.uuid4().hex[:8]}_{file.filename}")
                     file.save(os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], filename))
                     product.image_url = f'/static/uploads/{filename}'
-            elif request.form.get('image_url'):
-                product.image_url = request.form['image_url']
             
             db.session.commit()
             
@@ -1037,190 +751,6 @@ def seller_inventory():
         flash('Error loading inventory.', 'danger')
         return redirect(url_for('seller_dashboard'))
 
-@app.route('/seller/restock/<int:id>', methods=['POST'])
-@role_required('seller')
-def restock_product(id):
-    try:
-        product = Product.query.get_or_404(id)
-        
-        if product.seller_id != session['user_id']:
-            return jsonify({'error': 'Unauthorized'}), 403
-        
-        quantity = int(request.form.get('quantity', 0))
-        if quantity <= 0:
-            flash('Invalid quantity.', 'danger')
-            return redirect(url_for('seller_inventory'))
-        
-        previous_stock = product.stock
-        product.stock += quantity
-        db.session.commit()
-        
-        log_inventory_change(product.id, session['user_id'], previous_stock, product.stock, 'restock')
-        
-        flash(f'Added {quantity} units to {product.name}', 'success')
-    except Exception as e:
-        logger.error(f"Restock error: {e}")
-        flash('Error restocking product.', 'danger')
-    
-    return redirect(url_for('seller_inventory'))
-
-# ===== POS / OFFLINE SALES FEATURES =====
-
-@app.route('/seller/pos')
-@role_required('seller')
-def pos_dashboard():
-    try:
-        seller = User.query.get(session['user_id'])
-        products = Product.query.filter_by(seller_id=seller.id, is_active=True).filter(Product.stock > 0).all()
-        
-        today = datetime.now().date()
-        try:
-            today_sales = OfflineSale.query.filter(
-                OfflineSale.seller_id == seller.id,
-                db.func.date(OfflineSale.created_at) == today
-            ).all()
-            today_total = sum(sale.total for sale in today_sales)
-        except:
-            today_sales = []
-            today_total = 0
-        
-        return render_template('pos_dashboard.html', 
-                             products=products,
-                             today_sales=today_sales,
-                             today_total=today_total)
-    except Exception as e:
-        logger.error(f"POS dashboard error: {e}")
-        flash('Error loading POS.', 'danger')
-        return redirect(url_for('seller_dashboard'))
-
-@app.route('/seller/pos/checkout', methods=['POST'])
-@role_required('seller')
-def pos_checkout():
-    try:
-        seller = User.query.get(session['user_id'])
-        
-        data = request.get_json()
-        cart = data.get('cart', [])
-        customer_name = data.get('customer_name', '')
-        customer_phone = data.get('customer_phone', '')
-        customer_whatsapp = data.get('customer_whatsapp', customer_phone)
-        payment_method = data.get('payment_method', 'cash')
-        discount = float(data.get('discount', 0))
-        
-        if not cart:
-            return jsonify({'error': 'Cart is empty'}), 400
-        
-        items = []
-        subtotal = 0
-        
-        for item in cart:
-            product = Product.query.get(item['product_id'])
-            if not product or product.seller_id != seller.id:
-                return jsonify({'error': f'Invalid product: {item["product_id"]}'}), 400
-            
-            if product.stock < item['quantity']:
-                return jsonify({'error': f'Insufficient stock for {product.name}'}), 400
-            
-            previous_stock = product.stock
-            product.stock -= item['quantity']
-            
-            item_total = product.price * item['quantity']
-            subtotal += item_total
-            
-            items.append({
-                'product_id': product.id,
-                'product_name': product.name,
-                'quantity': item['quantity'],
-                'unit_price': product.price,
-                'total': item_total
-            })
-            
-            log_inventory_change(product.id, seller.id, previous_stock, product.stock, 'pos_sale')
-            
-            try:
-                sale = Sale(
-                    seller_id=seller.id,
-                    product_id=product.id,
-                    quantity=item['quantity'],
-                    unit_price=product.price,
-                    total_price=item_total,
-                    sale_type='pos',
-                    payment_method=payment_method
-                )
-                db.session.add(sale)
-            except:
-                pass
-        
-        total = subtotal - discount
-        
-        receipt_number = generate_receipt_number()
-        offline_sale = OfflineSale(
-            seller_id=seller.id,
-            customer_name=customer_name,
-            customer_phone=customer_phone,
-            items=items,
-            subtotal=subtotal,
-            discount=discount,
-            total=total,
-            payment_method=payment_method,
-            receipt_number=receipt_number
-        )
-        db.session.add(offline_sale)
-        
-        if customer_name:
-            try:
-                customer = Customer.query.filter_by(seller_id=seller.id, phone=customer_phone).first()
-                if customer:
-                    customer.total_purchases += total
-                    customer.visit_count += 1
-                    customer.last_visit = datetime.utcnow()
-                    if customer_whatsapp:
-                        customer.whatsapp = customer_whatsapp
-                else:
-                    customer = Customer(
-                        seller_id=seller.id,
-                        name=customer_name,
-                        phone=customer_phone,
-                        whatsapp=customer_whatsapp,
-                        total_purchases=total,
-                        visit_count=1,
-                        last_visit=datetime.utcnow()
-                    )
-                    db.session.add(customer)
-            except:
-                pass
-        
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'receipt_number': receipt_number,
-            'total': total
-        })
-        
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"POS checkout error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/seller/pos/receipt/<receipt_number>')
-@role_required('seller')
-def pos_receipt(receipt_number):
-    try:
-        sale = OfflineSale.query.filter_by(receipt_number=receipt_number).first_or_404()
-        
-        if sale.seller_id != session['user_id']:
-            flash('Access denied.', 'danger')
-            return redirect(url_for('pos_dashboard'))
-        
-        return render_template('pos_receipt.html', sale=sale)
-    except Exception as e:
-        logger.error(f"Receipt error: {e}")
-        flash('Receipt not found.', 'danger')
-        return redirect(url_for('pos_dashboard'))
-
-# ===== CUSTOMER MANAGEMENT =====
-
 @app.route('/seller/customers')
 @role_required('seller')
 def customer_list():
@@ -1243,10 +773,11 @@ def customer_detail(id):
             flash('Access denied.', 'danger')
             return redirect(url_for('customer_list'))
         
+        purchases = []
         try:
             purchases = Sale.query.filter_by(seller_id=session['user_id'], customer_id=customer.id).order_by(Sale.sale_date.desc()).all()
         except:
-            purchases = []
+            pass
         
         return render_template('customer_detail.html', customer=customer, purchases=purchases)
     except Exception as e:
@@ -1285,8 +816,6 @@ def add_customer():
     
     return redirect(url_for('customer_list'))
 
-# ===== SALES TRACKING & REPORTS =====
-
 @app.route('/seller/sales')
 @role_required('seller')
 def sales_report():
@@ -1304,6 +833,13 @@ def sales_report():
             start_date = today.replace(day=1)
         else:
             start_date = today.replace(month=1, day=1)
+        
+        sales = []
+        total_sales = 0
+        total_orders = 0
+        avg_order_value = 0
+        sales_by_product = []
+        sales_by_day = []
         
         try:
             sales = Sale.query.filter(
@@ -1331,12 +867,7 @@ def sales_report():
                 Sale.sale_date >= start_date
             ).group_by(db.func.date(Sale.sale_date)).order_by('date').all()
         except:
-            sales = []
-            total_sales = 0
-            total_orders = 0
-            avg_order_value = 0
-            sales_by_product = []
-            sales_by_day = []
+            pass
         
         return render_template('sales_report.html',
                              period=period,
@@ -1349,6 +880,107 @@ def sales_report():
         logger.error(f"Sales report error: {e}")
         flash('Error loading sales report.', 'danger')
         return redirect(url_for('seller_dashboard'))
+
+# ===== POS SYSTEM =====
+
+@app.route('/seller/pos')
+@role_required('seller')
+def pos_dashboard():
+    try:
+        seller = User.query.get(session['user_id'])
+        products = Product.query.filter_by(seller_id=seller.id, is_active=True).filter(Product.stock > 0).all()
+        
+        today = datetime.now().date()
+        today_sales = []
+        today_total = 0
+        try:
+            today_sales = OfflineSale.query.filter(
+                OfflineSale.seller_id == seller.id,
+                db.func.date(OfflineSale.created_at) == today
+            ).all()
+            today_total = sum(sale.total for sale in today_sales)
+        except:
+            pass
+        
+        return render_template('pos_dashboard.html', 
+                             products=products,
+                             today_sales=today_sales,
+                             today_total=today_total)
+    except Exception as e:
+        logger.error(f"POS dashboard error: {e}")
+        flash('Error loading POS.', 'danger')
+        return redirect(url_for('seller_dashboard'))
+
+@app.route('/seller/pos/checkout', methods=['POST'])
+@role_required('seller')
+def pos_checkout():
+    try:
+        seller = User.query.get(session['user_id'])
+        
+        data = request.get_json()
+        cart = data.get('cart', [])
+        customer_name = data.get('customer_name', '')
+        customer_phone = data.get('customer_phone', '')
+        payment_method = data.get('payment_method', 'cash')
+        discount = float(data.get('discount', 0))
+        
+        if not cart:
+            return jsonify({'error': 'Cart is empty'}), 400
+        
+        items = []
+        subtotal = 0
+        
+        for item in cart:
+            product = Product.query.get(item['product_id'])
+            if not product or product.seller_id != seller.id:
+                return jsonify({'error': f'Invalid product: {item["product_id"]}'}), 400
+            
+            if product.stock < item['quantity']:
+                return jsonify({'error': f'Insufficient stock for {product.name}'}), 400
+            
+            previous_stock = product.stock
+            product.stock -= item['quantity']
+            
+            item_total = product.price * item['quantity']
+            subtotal += item_total
+            
+            items.append({
+                'product_id': product.id,
+                'product_name': product.name,
+                'quantity': item['quantity'],
+                'unit_price': product.price,
+                'total': item_total
+            })
+            
+            log_inventory_change(product.id, seller.id, previous_stock, product.stock, 'pos_sale')
+        
+        total = subtotal - discount
+        receipt_number = f"REC-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
+        
+        offline_sale = OfflineSale(
+            seller_id=seller.id,
+            customer_name=customer_name,
+            customer_phone=customer_phone,
+            items=items,
+            subtotal=subtotal,
+            discount=discount,
+            total=total,
+            payment_method=payment_method,
+            receipt_number=receipt_number
+        )
+        db.session.add(offline_sale)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'receipt_number': receipt_number,
+            'total': total
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"POS checkout error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 # ===== CART & CHECKOUT =====
 
@@ -1422,14 +1054,12 @@ def checkout():
             
             subtotal = 0
             order_items = []
-            sellers = set()
             
             for product_id, quantity in cart.items():
                 product = Product.query.get(int(product_id))
                 if product and product.is_active and product.stock >= quantity:
                     item_total = product.price * quantity
                     subtotal += item_total
-                    sellers.add(product.seller_id)
                     order_items.append({
                         'product': product,
                         'quantity': quantity,
@@ -1456,16 +1086,11 @@ def checkout():
                 payment_method=payment_method
             )
             
-            if len(sellers) == 1:
-                order.seller_id = list(sellers)[0]
-            
             db.session.add(order)
             db.session.flush()
             
             for item in order_items:
                 product = item['product']
-                
-                previous_stock = product.stock
                 product.stock -= item['quantity']
                 
                 order_item = OrderItem(
@@ -1478,10 +1103,9 @@ def checkout():
                 )
                 db.session.add(order_item)
                 
-                log_inventory_change(product.id, product.seller_id, previous_stock, product.stock, 'order', order.id)
+                log_inventory_change(product.id, product.seller_id, product.stock + item['quantity'], product.stock, 'order', order.id)
             
             db.session.commit()
-            
             session['cart'] = {}
             
             flash('Order placed successfully!', 'success')
@@ -1530,7 +1154,7 @@ def order_detail(id):
         order = Order.query.get_or_404(id)
         user = User.query.get(session['user_id'])
         
-        if user.role != 'admin' and order.user_id != user.id and order.seller_id != user.id and order.rider_id != user.id:
+        if user.role != 'admin' and order.user_id != user.id and order.seller_id != user.id:
             flash('Access denied.', 'danger')
             return redirect(url_for('index'))
         
@@ -1562,265 +1186,6 @@ def orders():
         logger.error(f"Orders error: {e}")
         flash('Error loading orders. Please try again.', 'danger')
         return redirect(url_for('index'))
-
-# ===== RIDER TRACKING AND MAPS =====
-
-@app.route('/rider/track/<int:order_id>')
-@login_required
-def track_order(order_id):
-    try:
-        order = Order.query.get_or_404(order_id)
-        user = User.query.get(session['user_id'])
-        
-        if user.role != 'admin' and order.user_id != user.id and order.rider_id != user.id:
-            flash('Access denied.', 'danger')
-            return redirect(url_for('index'))
-        
-        return render_template('track_order.html', order=order)
-    except Exception as e:
-        logger.error(f"Track order error: {e}")
-        flash('Error loading tracking.', 'danger')
-        return redirect(url_for('orders'))
-
-@app.route('/rider/update-location', methods=['POST'])
-@login_required
-@role_required('rider')
-def update_rider_location():
-    try:
-        data = request.get_json()
-        rider_id = session['user_id']
-        lat = data.get('lat')
-        lng = data.get('lng')
-        accuracy = data.get('accuracy', 0)
-        order_id = data.get('order_id')
-        
-        rider = User.query.get(rider_id)
-        rider.latitude = lat
-        rider.longitude = lng
-        rider.last_seen = datetime.utcnow()
-        
-        try:
-            location = UserLocation(
-                user_id=rider_id,
-                latitude=lat,
-                longitude=lng,
-                accuracy=accuracy
-            )
-            db.session.add(location)
-        except:
-            pass
-        
-        if order_id:
-            try:
-                tracking = OrderTracking(
-                    order_id=order_id,
-                    rider_lat=lat,
-                    rider_lng=lng,
-                    status='in_transit',
-                    timestamp=datetime.utcnow()
-                )
-                db.session.add(tracking)
-                
-                socketio.emit(f'order_{order_id}_location', {
-                    'lat': lat,
-                    'lng': lng,
-                    'timestamp': datetime.utcnow().isoformat()
-                }, room=f'order_{order_id}')
-            except:
-                pass
-        
-        db.session.commit()
-        
-        return jsonify({'success': True})
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Update location error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/rider-location/<int:rider_id>')
-def get_rider_location(rider_id):
-    try:
-        rider = User.query.get_or_404(rider_id)
-        return jsonify({
-            'lat': rider.latitude,
-            'lng': rider.longitude,
-            'last_seen': rider.last_seen.isoformat() if rider.last_seen else None,
-            'is_online': rider.is_online
-        })
-    except Exception as e:
-        logger.error(f"Get rider location error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/order-tracking/<int:order_id>')
-@login_required
-def get_order_tracking(order_id):
-    try:
-        tracking = OrderTracking.query.filter_by(order_id=order_id).order_by(OrderTracking.timestamp).all()
-        
-        return jsonify([{
-            'lat': t.rider_lat,
-            'lng': t.rider_lng,
-            'status': t.status,
-            'message': t.message,
-            'timestamp': t.timestamp.isoformat()
-        } for t in tracking])
-    except Exception as e:
-        logger.error(f"Order tracking error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-# ===== VIDEO CALL FEATURES =====
-
-@app.route('/video-call/initiate', methods=['POST'])
-@login_required
-def initiate_video_call():
-    try:
-        data = request.get_json()
-        receiver_id = data.get('receiver_id')
-        product_id = data.get('product_id')
-        
-        receiver = User.query.get_or_404(receiver_id)
-        product = Product.query.get(product_id) if product_id else None
-        
-        if not receiver.is_online:
-            return jsonify({'error': 'User is offline'}), 400
-        
-        room_id = generate_video_room_id()
-        
-        video_call = VideoCall(
-            room_id=room_id,
-            initiator_id=session['user_id'],
-            receiver_id=receiver_id,
-            product_id=product_id,
-            status='pending',
-            ai_assistant_active=False
-        )
-        db.session.add(video_call)
-        db.session.commit()
-        
-        socketio.emit('incoming_call', {
-            'call_id': video_call.id,
-            'room_id': room_id,
-            'initiator': session['username'],
-            'product': product.name if product else None,
-            'initiator_id': session['user_id']
-        }, room=f'user_{receiver_id}')
-        
-        return jsonify({
-            'success': True,
-            'call_id': video_call.id,
-            'room_id': room_id
-        })
-    except Exception as e:
-        logger.error(f"Initiate video call error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/video-call/<int:call_id>')
-@login_required
-def video_call_room(call_id):
-    try:
-        call = VideoCall.query.get_or_404(call_id)
-        
-        if call.initiator_id != session['user_id'] and call.receiver_id != session['user_id']:
-            flash('Access denied.', 'danger')
-            return redirect(url_for('index'))
-        
-        if call.status == 'pending':
-            call.status = 'active'
-            call.started_at = datetime.utcnow()
-            db.session.commit()
-        
-        product = Product.query.get(call.product_id) if call.product_id else None
-        other_user = User.query.get(call.initiator_id if call.receiver_id == session['user_id'] else call.receiver_id)
-        
-        return render_template('video_call.html', 
-                             call=call, 
-                             product=product,
-                             other_user=other_user)
-    except Exception as e:
-        logger.error(f"Video call room error: {e}")
-        flash('Error loading video call.', 'danger')
-        return redirect(url_for('index'))
-
-@app.route('/video-call/<int:call_id>/end', methods=['POST'])
-@login_required
-def end_video_call(call_id):
-    try:
-        call = VideoCall.query.get_or_404(call_id)
-        
-        if call.initiator_id != session['user_id'] and call.receiver_id != session['user_id']:
-            return jsonify({'error': 'Unauthorized'}), 403
-        
-        call.status = 'ended'
-        call.ended_at = datetime.utcnow()
-        db.session.commit()
-        
-        other_id = call.receiver_id if call.initiator_id == session['user_id'] else call.initiator_id
-        socketio.emit('call_ended', {
-            'call_id': call_id
-        }, room=f'user_{other_id}')
-        
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"End video call error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/video-call/<int:call_id>/ai-toggle', methods=['POST'])
-@login_required
-def toggle_video_call_ai(call_id):
-    try:
-        call = VideoCall.query.get_or_404(call_id)
-        
-        if call.initiator_id != session['user_id'] and call.receiver_id != session['user_id']:
-            return jsonify({'error': 'Unauthorized'}), 403
-        
-        data = request.get_json()
-        call.ai_assistant_active = data.get('active', not call.ai_assistant_active)
-        db.session.commit()
-        
-        socketio.emit('ai_toggled', {
-            'call_id': call_id,
-            'active': call.ai_assistant_active
-        }, room=f'call_{call_id}')
-        
-        return jsonify({'success': True, 'active': call.ai_assistant_active})
-    except Exception as e:
-        logger.error(f"Toggle AI error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/video-call/<int:call_id>/message', methods=['POST'])
-@login_required
-def send_video_call_message(call_id):
-    try:
-        call = VideoCall.query.get_or_404(call_id)
-        
-        if call.initiator_id != session['user_id'] and call.receiver_id != session['user_id']:
-            return jsonify({'error': 'Unauthorized'}), 403
-        
-        data = request.get_json()
-        message = data.get('message')
-        is_ai = data.get('is_ai', False)
-        
-        call_message = VideoCallMessage(
-            call_id=call_id,
-            sender_id=session['user_id'],
-            message=message,
-            is_ai=is_ai
-        )
-        db.session.add(call_message)
-        db.session.commit()
-        
-        socketio.emit('call_message', {
-            'call_id': call_id,
-            'message': message,
-            'sender': session['username'] if not is_ai else 'AI Assistant',
-            'is_ai': is_ai,
-            'timestamp': datetime.utcnow().isoformat()
-        }, room=f'call_{call_id}')
-        
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"Send video call message error: {e}")
-        return jsonify({'error': str(e)}), 500
 
 # ===== RIDER FEATURES =====
 
@@ -1888,7 +1253,45 @@ def accept_order(id):
     
     return redirect(url_for('rider_dashboard'))
 
-# ===== BUYER-SELLER CHAT =====
+# ===== CHAT ROUTES =====
+
+@app.route('/inbox')
+@login_required
+def inbox():
+    try:
+        user_id = session['user_id']
+        
+        sent = db.session.query(Message.receiver_id).filter(Message.sender_id == user_id).distinct().subquery()
+        received = db.session.query(Message.sender_id).filter(Message.receiver_id == user_id).distinct().subquery()
+        
+        conversation_partner_ids = db.session.query(sent.c.receiver_id).union(db.session.query(received.c.sender_id)).distinct().all()
+        conversation_partner_ids = [id[0] for id in conversation_partner_ids]
+        
+        conversations = []
+        for partner_id in conversation_partner_ids:
+            partner = User.query.get(partner_id)
+            if not partner:
+                continue
+                
+            last_message = Message.query.filter(
+                ((Message.sender_id == user_id) & (Message.receiver_id == partner_id)) |
+                ((Message.sender_id == partner_id) & (Message.receiver_id == user_id))
+            ).order_by(Message.created_at.desc()).first()
+            
+            unread_count = Message.query.filter_by(sender_id=partner_id, receiver_id=user_id, is_read=False).count()
+            
+            conversations.append({
+                'partner': partner,
+                'last_message': last_message,
+                'unread_count': unread_count
+            })
+        
+        conversations.sort(key=lambda x: x['last_message'].created_at if x['last_message'] else datetime.min, reverse=True)
+        
+        return render_template('inbox.html', conversations=conversations)
+    except Exception as e:
+        logger.error(f"Inbox error: {e}")
+        return render_template('inbox.html', conversations=[])
 
 @app.route('/chat/<int:receiver_id>')
 @login_required
@@ -1950,45 +1353,7 @@ def send_message():
         flash('Error sending message.', 'danger')
         return redirect(request.referrer or url_for('index'))
 
-@app.route('/inbox')
-@login_required
-def inbox():
-    try:
-        user_id = session['user_id']
-        
-        sent = db.session.query(Message.receiver_id).filter(Message.sender_id == user_id).distinct().subquery()
-        received = db.session.query(Message.sender_id).filter(Message.receiver_id == user_id).distinct().subquery()
-        
-        conversation_partner_ids = db.session.query(sent.c.receiver_id).union(db.session.query(received.c.sender_id)).distinct().all()
-        conversation_partner_ids = [id[0] for id in conversation_partner_ids]
-        
-        conversations = []
-        for partner_id in conversation_partner_ids:
-            partner = User.query.get(partner_id)
-            if not partner:
-                continue
-                
-            last_message = Message.query.filter(
-                ((Message.sender_id == user_id) & (Message.receiver_id == partner_id)) |
-                ((Message.sender_id == partner_id) & (Message.receiver_id == user_id))
-            ).order_by(Message.created_at.desc()).first()
-            
-            unread_count = Message.query.filter_by(sender_id=partner_id, receiver_id=user_id, is_read=False).count()
-            
-            conversations.append({
-                'partner': partner,
-                'last_message': last_message,
-                'unread_count': unread_count
-            })
-        
-        conversations.sort(key=lambda x: x['last_message'].created_at if x['last_message'] else datetime.min, reverse=True)
-        
-        return render_template('inbox.html', conversations=conversations)
-    except Exception as e:
-        logger.error(f"Inbox error: {e}")
-        return render_template('inbox.html', conversations=[])
-
-# ===== ENHANCED COMMUNITY FEATURES =====
+# ===== COMMUNITY ROUTES =====
 
 @app.route('/community', methods=['GET', 'POST'])
 @login_required
@@ -2034,50 +1399,16 @@ def community():
         
         users = User.query.filter(User.id != session['user_id']).limit(10).all()
         post_types = ['general', 'question', 'suggestion', 'feedback']
-        recent_posts = Post.query.order_by(Post.created_at.desc()).limit(5).all()
         
         return render_template('community.html', 
                              posts=posts.items,
                              pagination=posts,
                              users=users,
                              post_types=post_types,
-                             current_filter=filter_type,
-                             recent_posts=recent_posts)
+                             current_filter=filter_type)
     except Exception as e:
         logger.error(f"Community error: {e}")
         return render_template('community.html', posts=[], pagination=None, users=[], post_types=[], current_filter='all')
-
-@app.route('/post/<int:id>', methods=['GET', 'POST'])
-@login_required
-def view_post(id):
-    try:
-        post = Post.query.get_or_404(id)
-        
-        if request.method == 'POST':
-            content = request.form['content']
-            
-            if not content.strip():
-                flash('Comment cannot be empty.', 'danger')
-                return redirect(url_for('view_post', id=post.id))
-            
-            comment = Comment(
-                post_id=post.id,
-                user_id=session['user_id'],
-                content=content.strip()
-            )
-            
-            db.session.add(comment)
-            db.session.commit()
-            flash('Comment added!', 'success')
-            return redirect(url_for('view_post', id=post.id))
-        
-        comments = Comment.query.filter_by(post_id=post.id).order_by(Comment.created_at).all()
-        
-        return render_template('view_post.html', post=post, comments=comments)
-    except Exception as e:
-        logger.error(f"View post error: {e}")
-        flash('Error loading post.', 'danger')
-        return redirect(url_for('community'))
 
 @app.route('/post/<int:id>/like')
 @login_required
@@ -2094,59 +1425,33 @@ def like_post(id):
     
     return redirect(request.referrer or url_for('community'))
 
-@app.route('/post/<int:id>/delete', methods=['POST'])
-@login_required
-def delete_post(id):
-    try:
-        post = Post.query.get_or_404(id)
-        
-        if post.user_id != session['user_id'] and session['role'] != 'admin':
-            return jsonify({'success': False, 'error': 'Unauthorized'}), 403
-        
-        Comment.query.filter_by(post_id=id).delete()
-        db.session.delete(post)
-        db.session.commit()
-        return jsonify({'success': True})
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Delete post error: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-# ===== REVIEW SYSTEM =====
+# ===== REVIEW ROUTES =====
 
 @app.route('/review/<int:user_id>', methods=['GET', 'POST'])
 @login_required
 def review_user(user_id):
     try:
         reviewed_user = User.query.get_or_404(user_id)
-        order_id = request.args.get('order_id')
-        
-        existing_review = Review.query.filter_by(reviewer_id=session['user_id'], reviewed_id=user_id).first()
-        if existing_review and not order_id:
-            flash('You have already reviewed this user.', 'warning')
-            return redirect(url_for('community'))
         
         if request.method == 'POST':
             review = Review(
                 reviewer_id=session['user_id'],
                 reviewed_id=user_id,
                 rating=int(request.form['rating']),
-                comment=request.form['comment'],
-                order_id=order_id if order_id else None
+                comment=request.form['comment']
             )
             db.session.add(review)
             db.session.commit()
-            
             flash('Review submitted successfully!', 'success')
             return redirect(url_for('community'))
         
-        return render_template('review.html', user=reviewed_user, order_id=order_id)
+        return render_template('review.html', user=reviewed_user)
     except Exception as e:
         logger.error(f"Review error: {e}")
         flash('Error processing review.', 'danger')
         return redirect(url_for('community'))
 
-# ===== AI CHAT ASSISTANT =====
+# ===== AI ASSISTANT =====
 
 @app.route('/ai-assistant', methods=['GET', 'POST'])
 @login_required
@@ -2166,32 +1471,23 @@ def ai_assistant():
                 
                 context = f"The user is a {user.role} named {user.username}. "
                 if recent_orders:
-                    order_list = []
-                    for order in recent_orders:
-                        items = [f"{item.quantity}x {item.product.name}" for item in order.items]
-                        order_list.append(f"Order #{order.id}: {', '.join(items)}")
-                    context += f"They recently ordered: {'; '.join(order_list)}. "
+                    context += f"They have {len(recent_orders)} recent orders. "
                 
                 product_count = Product.query.filter_by(is_active=True).count()
-                seller_count = User.query.filter_by(role='seller').count()
-                context += f"The marketplace has {product_count} products from {seller_count} sellers. "
+                context += f"The marketplace has {product_count} products. "
                 
                 response = co.chat(
                     message=user_message,
                     model="command",
-                    preamble=f"You are a helpful assistant for Fresh Marketplace, a food delivery platform. {context}",
+                    preamble=f"You are a helpful assistant for Fresh Marketplace. {context}",
                     temperature=0.7
                 )
                 
                 if hasattr(response, 'text'):
                     response_text = response.text
-                elif isinstance(response, dict) and 'text' in response:
-                    response_text = response['text']
                 else:
                     response_text = str(response)
                     
-            except ImportError:
-                response_text = "Cohere library not properly configured."
             except Exception as e:
                 response_text = f"AI service temporarily unavailable."
                 logger.error(f"AI Error: {str(e)}")
@@ -2202,9 +1498,7 @@ def ai_assistant():
         "What are today's specials?",
         "How do I track my order?",
         "What payment methods do you accept?",
-        "How do I become a seller?",
-        "Tell me about your delivery policy",
-        "Do you have any discounts?"
+        "How do I become a seller?"
     ]
     
     return render_template('ai_assistant.html', 
@@ -2214,7 +1508,6 @@ def ai_assistant():
 
 @app.route('/api/ai/quick', methods=['POST'])
 def ai_quick_question():
-    """Quick AI endpoint for homepage"""
     if not co:
         return jsonify({'response': 'AI assistant is currently unavailable.'})
     
@@ -2225,11 +1518,10 @@ def ai_quick_question():
         return jsonify({'response': 'Please ask a question.'})
     
     try:
-        # Simple response without user context for guests
         response = co.chat(
             message=question,
             model="command",
-            preamble="You are a helpful assistant for Fresh Marketplace, a food delivery platform.",
+            preamble="You are a helpful assistant for Fresh Marketplace.",
             temperature=0.7
         )
         
@@ -2263,19 +1555,67 @@ def get_notifications():
         logger.error(f"Notifications error: {e}")
         return jsonify({'unread_count': 0, 'latest_message': None, 'sender': None})
 
+# ===== ADMIN DASHBOARD =====
+
+@app.route('/admin/dashboard')
+@role_required('admin')
+def admin_dashboard():
+    try:
+        users = User.query.all()
+        products = Product.query.all()
+        orders = Order.query.order_by(Order.created_at.desc()).limit(50).all()
+        
+        total_users = len(users)
+        total_sellers = len([u for u in users if u.role == 'seller'])
+        total_riders = len([u for u in users if u.role == 'rider'])
+        total_buyers = len([u for u in users if u.role == 'buyer'])
+        total_products = len(products)
+        total_orders = Order.query.count()
+        pending_orders = Order.query.filter_by(status='pending').count()
+        
+        stats = {
+            'total_users': total_users,
+            'total_sellers': total_sellers,
+            'total_riders': total_riders,
+            'total_buyers': total_buyers,
+            'total_products': total_products,
+            'total_orders': total_orders,
+            'pending_orders': pending_orders
+        }
+        
+        return render_template('admin_dashboard.html', 
+                             stats=stats, 
+                             users=users[:10], 
+                             products=products[:10], 
+                             orders=orders)
+    except Exception as e:
+        logger.error(f"Admin dashboard error: {e}")
+        flash('Error loading dashboard.', 'danger')
+        return redirect(url_for('index'))
+
 # ===== ADMIN USER MANAGEMENT =====
 
 @app.route('/admin/users')
 @role_required('admin')
 def admin_users():
-    users = User.query.order_by(User.created_at.desc()).all()
-    return render_template('admin_users.html', users=users)
+    try:
+        users = User.query.order_by(User.created_at.desc()).all()
+        return render_template('admin_users.html', users=users)
+    except Exception as e:
+        logger.error(f"Admin users error: {e}")
+        flash('Error loading users.', 'danger')
+        return redirect(url_for('admin_dashboard'))
 
 @app.route('/admin/user/<int:user_id>')
 @role_required('admin')
 def admin_user_detail(user_id):
-    user = User.query.get_or_404(user_id)
-    return render_template('admin_user_detail.html', user=user)
+    try:
+        user = User.query.get_or_404(user_id)
+        return render_template('admin_user_detail.html', user=user)
+    except Exception as e:
+        logger.error(f"Admin user detail error: {e}")
+        flash('Error loading user details.', 'danger')
+        return redirect(url_for('admin_users'))
 
 @app.route('/admin/user/<int:user_id>/edit', methods=['GET', 'POST'])
 @role_required('admin')
@@ -2338,11 +1678,9 @@ def admin_delete_user(user_id):
 def impersonate_user(user_id):
     user = User.query.get_or_404(user_id)
     
-    # Store original admin ID in session
     session['admin_original_id'] = session['user_id']
     session['admin_original_name'] = session['username']
     
-    # Set session to target user
     session['user_id'] = user.id
     session['username'] = user.username
     session['role'] = user.role
@@ -2362,13 +1700,11 @@ def impersonate_user(user_id):
 @login_required
 def stop_impersonating():
     if 'admin_original_id' in session:
-        # Restore original admin session
         session['user_id'] = session['admin_original_id']
         session['username'] = session['admin_original_name']
         session['role'] = 'admin'
         session['profile_image'] = User.query.get(session['user_id']).profile_image
         
-        # Clear impersonation data
         session.pop('admin_original_id', None)
         session.pop('admin_original_name', None)
         session.pop('impersonating', None)
@@ -2381,8 +1717,13 @@ def stop_impersonating():
 @app.route('/admin/products')
 @role_required('admin')
 def admin_products():
-    products = Product.query.order_by(Product.created_at.desc()).all()
-    return render_template('admin_products.html', products=products)
+    try:
+        products = Product.query.order_by(Product.created_at.desc()).all()
+        return render_template('admin_products.html', products=products)
+    except Exception as e:
+        logger.error(f"Admin products error: {e}")
+        flash('Error loading products.', 'danger')
+        return redirect(url_for('admin_dashboard'))
 
 @app.route('/admin/product/<int:id>/toggle', methods=['POST'])
 @role_required('admin')
@@ -2409,110 +1750,10 @@ def admin_delete_product(id):
     
     return redirect(url_for('admin_products'))
 
-# ===== ADMIN DASHBOARD =====
-
-@app.route('/admin/dashboard')
-@role_required('admin')
-def admin_dashboard():
-    try:
-        users = User.query.all()
-        products = Product.query.all()
-        orders = Order.query.order_by(Order.created_at.desc()).limit(50).all()
-        
-        total_users = len(users)
-        total_sellers = len([u for u in users if u.role == 'seller'])
-        total_riders = len([u for u in users if u.role == 'rider'])
-        total_buyers = len([u for u in users if u.role == 'buyer'])
-        total_products = len(products)
-        total_orders = Order.query.count()
-        pending_orders = Order.query.filter_by(status='pending').count()
-        
-        stats = {
-            'total_users': total_users,
-            'total_sellers': total_sellers,
-            'total_riders': total_riders,
-            'total_buyers': total_buyers,
-            'total_products': total_products,
-            'total_orders': total_orders,
-            'pending_orders': pending_orders
-        }
-        
-        return render_template('admin_dashboard.html', 
-                             stats=stats, 
-                             users=users[:10], 
-                             products=products[:10], 
-                             orders=orders)
-    except Exception as e:
-        logger.error(f"Admin dashboard error: {e}")
-        flash('Error loading dashboard.', 'danger')
-        return redirect(url_for('index'))
-
-# ===== SOCKETIO EVENTS =====
-
-@socketio.on('connect')
-def handle_connect():
-    if 'user_id' in session:
-        user_id = session['user_id']
-        join_room(f'user_{user_id}')
-        
-        try:
-            user = User.query.get(user_id)
-            if user:
-                user.is_online = True
-                user.last_seen = datetime.utcnow()
-                db.session.commit()
-        except:
-            pass
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    if 'user_id' in session:
-        user_id = session['user_id']
-        leave_room(f'user_{user_id}')
-        
-        try:
-            user = User.query.get(user_id)
-            if user:
-                user.is_online = False
-                user.last_seen = datetime.utcnow()
-                db.session.commit()
-        except:
-            pass
-
-@socketio.on('join_call')
-def handle_join_call(data):
-    call_id = data.get('call_id')
-    if call_id and 'user_id' in session:
-        room = f'call_{call_id}'
-        join_room(room)
-        emit('user_joined', {
-            'user_id': session['user_id'],
-            'username': session['username']
-        }, room=room)
-
-@socketio.on('leave_call')
-def handle_leave_call(data):
-    call_id = data.get('call_id')
-    if call_id and 'user_id' in session:
-        room = f'call_{call_id}'
-        leave_room(room)
-        emit('user_left', {
-            'user_id': session['user_id'],
-            'username': session['username']
-        }, room=room)
-
-@socketio.on('track_order')
-def handle_track_order(data):
-    order_id = data.get('order_id')
-    if order_id and 'user_id' in session:
-        room = f'order_{order_id}'
-        join_room(room)
-
 # ===== DATABASE INITIALIZATION =====
 
 def init_db():
     with app.app_context():
-        # Create tables
         db.create_all()
         
         # Create admin if not exists
