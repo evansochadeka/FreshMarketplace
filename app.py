@@ -9,7 +9,6 @@ from functools import wraps
 import cohere
 import uuid
 import json
-import math
 import logging
 
 # Configure logging
@@ -22,34 +21,31 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:/
 if app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgres://'):
     app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace('postgres://', 'postgresql://', 1)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'pool_pre_ping': True,
-    'pool_recycle': 300,
-    'pool_size': 10,
-    'max_overflow': 20
-}
 
 # SocketIO for real-time features
-socketio = SocketIO(app, cors_allowed_origins="*", manage_session=False, ping_timeout=60, ping_interval=25)
+socketio = SocketIO(app, cors_allowed_origins="*", manage_session=False)
 
 # File upload configuration
 UPLOAD_FOLDER = 'static/uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
 # Create upload folders
 os.makedirs(os.path.join(app.root_path, UPLOAD_FOLDER), exist_ok=True)
 os.makedirs(os.path.join(app.root_path, 'static/images'), exist_ok=True)
 
-# Create default profile image if it doesn't exist
+# Create default profile image
 default_profile_path = os.path.join(app.root_path, 'static/images/default-profile.png')
 if not os.path.exists(default_profile_path):
-    # Create a simple 1x1 transparent PNG
     with open(default_profile_path, 'wb') as f:
         f.write(b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\x0bIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\x0d\n\x08\xb4\x00\x00\x00\x00IEND\xaeB`\x82')
 
 db = SQLAlchemy(app)
+
+# Initialize Cohere
+cohere_api_key = os.environ.get('COHERE_API_KEY')
+co = cohere.Client(cohere_api_key) if cohere_api_key else None
 
 # ===== MODELS =====
 class User(db.Model):
@@ -138,7 +134,7 @@ class Order(db.Model):
     completed_at = db.Column(db.DateTime)
     
     # Relationships
-    user = db.relationship('User', foreign_keys=[user_id], backref='user_orders')
+    user = db.relationship('User', foreign_keys=[user_id], backref='customer_orders')
     rider = db.relationship('User', foreign_keys=[rider_id], backref='rider_deliveries')
     seller = db.relationship('User', foreign_keys=[seller_id], backref='seller_orders')
     items = db.relationship('OrderItem', back_populates='order', lazy=True)
@@ -384,10 +380,6 @@ class RiderRecommendation(db.Model):
     seller = db.relationship('User', foreign_keys=[seller_id], back_populates='received_recommendations')
     recommended_rider = db.relationship('User', foreign_keys=[recommended_rider_id])
 
-# Initialize Cohere
-cohere_api_key = os.environ.get('COHERE_API_KEY')
-co = cohere.Client(cohere_api_key) if cohere_api_key else None
-
 # ===== HELPER FUNCTIONS =====
 
 def allowed_file(filename):
@@ -416,6 +408,20 @@ def role_required(role):
         return decorated_function
     return decorator
 
+def admin_or_self_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('Please log in to access this page.', 'warning')
+            return redirect(url_for('login'))
+        user = User.query.get(session['user_id'])
+        target_id = kwargs.get('user_id')
+        if not user or (user.role != 'admin' and user.id != target_id):
+            flash('Access denied.', 'danger')
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 def calculate_price_with_fees(base_price):
     """Calculate price including 10% rider fee and 10% platform fee"""
     rider_fee = round(base_price * 0.10, 2)
@@ -428,7 +434,6 @@ def find_nearest_rider(location):
         riders = User.query.filter_by(role='rider', is_online=True).all()
         if not riders:
             return None
-        # Simple assignment - first available rider
         return riders[0] if riders else None
     except:
         return None
@@ -497,7 +502,6 @@ def register():
             flash('Passwords do not match.', 'danger')
             return redirect(url_for('register'))
         
-        # Handle profile image upload
         profile_image = '/static/images/default-profile.png'
         if 'profile_image' in request.files:
             file = request.files['profile_image']
@@ -506,7 +510,6 @@ def register():
                 file.save(os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], filename))
                 profile_image = f'/static/uploads/{filename}'
         
-        # Check if user exists
         if User.query.filter_by(username=username).first():
             flash('Username already exists.', 'danger')
             return redirect(url_for('register'))
@@ -515,7 +518,6 @@ def register():
             flash('Email already exists.', 'danger')
             return redirect(url_for('register'))
         
-        # Create new user
         user = User(
             username=username,
             email=email,
@@ -559,12 +561,10 @@ def login():
                 session['role'] = user.role
                 session['profile_image'] = user.profile_image
                 
-                # Update online status
                 user.is_online = True
                 user.last_seen = datetime.utcnow()
                 db.session.commit()
                 
-                # Get unread message count
                 try:
                     unread_count = Message.query.filter_by(receiver_id=user.id, is_read=False).count()
                     session['unread_count'] = unread_count
@@ -573,7 +573,6 @@ def login():
                 
                 flash(f'Welcome back, {user.username}!', 'success')
                 
-                # Redirect based on role
                 if user.role == 'admin':
                     return redirect(url_for('admin_dashboard'))
                 elif user.role == 'rider':
@@ -594,15 +593,12 @@ def login():
 
 @app.route('/logout')
 def logout():
-    try:
-        if 'user_id' in session:
-            user = User.query.get(session['user_id'])
-            if user:
-                user.is_online = False
-                user.last_seen = datetime.utcnow()
-                db.session.commit()
-    except:
-        pass
+    if 'user_id' in session:
+        user = User.query.get(session['user_id'])
+        if user:
+            user.is_online = False
+            user.last_seen = datetime.utcnow()
+            db.session.commit()
     
     session.clear()
     flash('Logged out successfully.', 'success')
@@ -636,11 +632,12 @@ def products():
         
         products = query.order_by(Product.created_at.desc()).all()
         categories = db.session.query(Product.category).distinct().all()
-        return render_template('products.html', products=products, categories=[c[0] for c in categories if c[0]])
+        category_list = [c[0] for c in categories if c[0]]
+        
+        return render_template('products.html', products=products, categories=category_list)
     except Exception as e:
         logger.error(f"Products error: {e}")
-        flash('Error loading products.', 'danger')
-        return redirect(url_for('index'))
+        return render_template('products.html', products=[], categories=[])
 
 @app.route('/product/<int:id>')
 def product_detail(id):
@@ -728,7 +725,6 @@ def recommend_rider(id):
 def seller_inquiries():
     seller_id = session['user_id']
     inquiries = ProductInquiry.query.filter_by(seller_id=seller_id).order_by(ProductInquiry.created_at.desc()).all()
-    
     return render_template('seller_inquiries.html', inquiries=inquiries)
 
 @app.route('/inquiry/<int:id>/answer', methods=['POST'])
@@ -766,6 +762,10 @@ def seller_dashboard():
     try:
         seller = User.query.get(session['user_id'])
         
+        if not seller:
+            flash('Seller not found.', 'danger')
+            return redirect(url_for('index'))
+        
         # Get seller's products
         products = Product.query.filter_by(seller_id=seller.id, is_active=True).all()
         
@@ -773,45 +773,46 @@ def seller_dashboard():
         today = datetime.now().date()
         
         # Today's sales
-        today_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.total_price), 0)).filter(
-            Sale.seller_id == seller.id,
-            db.func.date(Sale.sale_date) == today
-        ).scalar() or 0
-        
-        # This week's sales
-        week_start = today - timedelta(days=today.weekday())
-        week_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.total_price), 0)).filter(
-            Sale.seller_id == seller.id,
-            Sale.sale_date >= week_start
-        ).scalar() or 0
-        
-        # This month's sales
-        month_start = today.replace(day=1)
-        month_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.total_price), 0)).filter(
-            Sale.seller_id == seller.id,
-            Sale.sale_date >= month_start
-        ).scalar() or 0
+        try:
+            today_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.total_price), 0)).filter(
+                Sale.seller_id == seller.id,
+                db.func.date(Sale.sale_date) == today
+            ).scalar() or 0
+        except:
+            today_sales = 0
         
         # Total sales
-        total_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.total_price), 0)).filter(
-            Sale.seller_id == seller.id
-        ).scalar() or 0
+        try:
+            total_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.total_price), 0)).filter(
+                Sale.seller_id == seller.id
+            ).scalar() or 0
+        except:
+            total_sales = 0
         
         # Recent orders
-        recent_orders = Order.query.filter_by(seller_id=seller.id).order_by(Order.created_at.desc()).limit(10).all()
+        try:
+            recent_orders = Order.query.filter_by(seller_id=seller.id).order_by(Order.created_at.desc()).limit(5).all()
+        except:
+            recent_orders = []
         
         # Low stock alerts
         low_stock_products = [p for p in products if p.stock <= p.low_stock_threshold]
         
-        # Top selling products
-        top_products = db.session.query(
-            Product, db.func.coalesce(db.func.sum(OrderItem.quantity), 0).label('total_sold')
-        ).outerjoin(OrderItem).filter(
-            Product.seller_id == seller.id
-        ).group_by(Product.id).order_by(db.desc('total_sold')).limit(5).all()
+        # Top products
+        try:
+            top_products = db.session.query(
+                Product, db.func.coalesce(db.func.sum(OrderItem.quantity), 0).label('total_sold')
+            ).outerjoin(OrderItem, OrderItem.product_id == Product.id).filter(
+                Product.seller_id == seller.id
+            ).group_by(Product.id).order_by(db.desc('total_sold')).limit(5).all()
+        except:
+            top_products = []
         
         # Recent customers
-        recent_customers = Customer.query.filter_by(seller_id=seller.id).order_by(Customer.last_visit.desc()).limit(10).all()
+        try:
+            recent_customers = Customer.query.filter_by(seller_id=seller.id).order_by(Customer.last_visit.desc()).limit(5).all()
+        except:
+            recent_customers = []
         
         # Unread messages
         unread_messages = Message.query.filter_by(receiver_id=seller.id, is_read=False).count()
@@ -823,8 +824,6 @@ def seller_dashboard():
             'total_products': len(products),
             'total_sales': float(total_sales),
             'today_sales': float(today_sales),
-            'week_sales': float(week_sales),
-            'month_sales': float(month_sales),
             'low_stock_count': len(low_stock_products),
             'unread_messages': unread_messages,
             'pending_inquiries': pending_inquiries
@@ -880,7 +879,6 @@ def add_product():
             barcode = request.form.get('barcode', '')
             low_stock_threshold = int(request.form.get('low_stock_threshold', 5))
             video_call_enabled = request.form.get('video_call_enabled') == 'on'
-            virtual_tour_url = request.form.get('virtual_tour_url', '')
             
             # Calculate price with fees
             final_price, rider_fee, platform_fee = calculate_price_with_fees(base_price)
@@ -919,17 +917,15 @@ def add_product():
                 barcode=barcode,
                 seller_id=session['user_id'],
                 low_stock_threshold=low_stock_threshold,
-                video_call_enabled=video_call_enabled,
-                virtual_tour_url=virtual_tour_url
+                video_call_enabled=video_call_enabled
             )
             
             db.session.add(product)
             db.session.commit()
             
-            # Log inventory addition
             log_inventory_change(product.id, session['user_id'], 0, stock, 'initial_stock')
             
-            flash(f'Product added successfully! Final price: Kes{final_price} (includes 10% rider fee + 10% platform fee)', 'success')
+            flash(f'Product added successfully! Final price: Kes{final_price}', 'success')
             return redirect(url_for('seller_products'))
             
         except Exception as e:
@@ -943,22 +939,20 @@ def add_product():
 @app.route('/seller/edit_product/<int:id>', methods=['GET', 'POST'])
 @role_required('seller')
 def edit_product(id):
-    try:
-        product = Product.query.get_or_404(id)
-        
-        # Ensure seller owns this product
-        if product.seller_id != session['user_id']:
-            flash('You do not have permission to edit this product.', 'danger')
-            return redirect(url_for('seller_products'))
-        
-        if request.method == 'POST':
+    product = Product.query.get_or_404(id)
+    
+    if product.seller_id != session['user_id']:
+        flash('You do not have permission to edit this product.', 'danger')
+        return redirect(url_for('seller_products'))
+    
+    if request.method == 'POST':
+        try:
             previous_stock = product.stock
             
             product.name = request.form['name']
             product.description = request.form['description']
             product.base_price = float(request.form['base_price'])
-            # Recalculate price with fees
-            final_price, rider_fee, platform_fee = calculate_price_with_fees(product.base_price)
+            final_price, _, _ = calculate_price_with_fees(product.base_price)
             product.price = final_price
             product.category = request.form['category']
             product.stock = int(request.form['stock'])
@@ -966,9 +960,7 @@ def edit_product(id):
             product.barcode = request.form.get('barcode', '')
             product.low_stock_threshold = int(request.form.get('low_stock_threshold', 5))
             product.video_call_enabled = request.form.get('video_call_enabled') == 'on'
-            product.virtual_tour_url = request.form.get('virtual_tour_url', '')
             
-            # Handle image upload
             if 'product_image' in request.files:
                 file = request.files['product_image']
                 if file and file.filename and allowed_file(file.filename):
@@ -980,34 +972,31 @@ def edit_product(id):
             
             db.session.commit()
             
-            # Log inventory change if stock changed
             if product.stock != previous_stock:
                 log_inventory_change(product.id, session['user_id'], previous_stock, product.stock, 'manual_update')
             
             flash('Product updated successfully!', 'success')
             return redirect(url_for('seller_products'))
-        
-        return render_template('edit_product.html', product=product)
-        
-    except Exception as e:
-        logger.error(f"Edit product error: {e}")
-        flash('Error editing product.', 'danger')
-        return redirect(url_for('seller_products'))
+            
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Edit product error: {e}")
+            flash('Error updating product.', 'danger')
+    
+    return render_template('edit_product.html', product=product)
 
 @app.route('/seller/delete_product/<int:id>')
 @role_required('seller')
 def delete_product(id):
+    product = Product.query.get_or_404(id)
+    
+    if product.seller_id != session['user_id']:
+        flash('You do not have permission to delete this product.', 'danger')
+        return redirect(url_for('seller_products'))
+    
     try:
-        product = Product.query.get_or_404(id)
-        
-        if product.seller_id != session['user_id']:
-            flash('You do not have permission to delete this product.', 'danger')
-            return redirect(url_for('seller_products'))
-        
-        # Soft delete - just mark as inactive
         product.is_active = False
         db.session.commit()
-        
         flash('Product deleted successfully!', 'success')
     except Exception as e:
         db.session.rollback()
@@ -1023,19 +1012,20 @@ def seller_inventory():
         seller = User.query.get(session['user_id'])
         products = Product.query.filter_by(seller_id=seller.id, is_active=True).all()
         
-        # Get inventory logs
-        logs = InventoryLog.query.filter_by(seller_id=seller.id).order_by(InventoryLog.created_at.desc()).limit(50).all()
+        try:
+            logs = InventoryLog.query.filter_by(seller_id=seller.id).order_by(InventoryLog.created_at.desc()).limit(50).all()
+        except:
+            logs = []
         
-        # Stock value calculation
-        total_stock_value = sum(p.price * p.stock for p in products)
-        total_stock_cost = sum(p.base_price * p.stock for p in products)
+        total_stock_value = sum(p.price * p.stock for p in products) if products else 0
+        total_stock_cost = sum(p.base_price * p.stock for p in products) if products else 0
         
         stats = {
             'total_products': len(products),
             'total_stock_value': total_stock_value,
             'total_stock_cost': total_stock_cost,
             'potential_profit': total_stock_value - total_stock_cost,
-            'low_stock_count': sum(1 for p in products if p.stock <= p.low_stock_threshold)
+            'low_stock_count': sum(1 for p in products if p.stock <= p.low_stock_threshold) if products else 0
         }
         
         return render_template('seller_inventory.html', 
@@ -1083,14 +1073,16 @@ def pos_dashboard():
         seller = User.query.get(session['user_id'])
         products = Product.query.filter_by(seller_id=seller.id, is_active=True).filter(Product.stock > 0).all()
         
-        # Today's offline sales
         today = datetime.now().date()
-        today_sales = OfflineSale.query.filter(
-            OfflineSale.seller_id == seller.id,
-            db.func.date(OfflineSale.created_at) == today
-        ).all()
-        
-        today_total = sum(sale.total for sale in today_sales)
+        try:
+            today_sales = OfflineSale.query.filter(
+                OfflineSale.seller_id == seller.id,
+                db.func.date(OfflineSale.created_at) == today
+            ).all()
+            today_total = sum(sale.total for sale in today_sales)
+        except:
+            today_sales = []
+            today_total = 0
         
         return render_template('pos_dashboard.html', 
                              products=products,
@@ -1129,7 +1121,6 @@ def pos_checkout():
             if product.stock < item['quantity']:
                 return jsonify({'error': f'Insufficient stock for {product.name}'}), 400
             
-            # Update stock
             previous_stock = product.stock
             product.stock -= item['quantity']
             
@@ -1144,20 +1135,21 @@ def pos_checkout():
                 'total': item_total
             })
             
-            # Log inventory change
             log_inventory_change(product.id, seller.id, previous_stock, product.stock, 'pos_sale')
             
-            # Record sale
-            sale = Sale(
-                seller_id=seller.id,
-                product_id=product.id,
-                quantity=item['quantity'],
-                unit_price=product.price,
-                total_price=item_total,
-                sale_type='pos',
-                payment_method=payment_method
-            )
-            db.session.add(sale)
+            try:
+                sale = Sale(
+                    seller_id=seller.id,
+                    product_id=product.id,
+                    quantity=item['quantity'],
+                    unit_price=product.price,
+                    total_price=item_total,
+                    sale_type='pos',
+                    payment_method=payment_method
+                )
+                db.session.add(sale)
+            except:
+                pass
         
         total = subtotal - discount
         
@@ -1175,26 +1167,28 @@ def pos_checkout():
         )
         db.session.add(offline_sale)
         
-        # Update or create customer
         if customer_name:
-            customer = Customer.query.filter_by(seller_id=seller.id, phone=customer_phone).first()
-            if customer:
-                customer.total_purchases += total
-                customer.visit_count += 1
-                customer.last_visit = datetime.utcnow()
-                if customer_whatsapp:
-                    customer.whatsapp = customer_whatsapp
-            else:
-                customer = Customer(
-                    seller_id=seller.id,
-                    name=customer_name,
-                    phone=customer_phone,
-                    whatsapp=customer_whatsapp,
-                    total_purchases=total,
-                    visit_count=1,
-                    last_visit=datetime.utcnow()
-                )
-                db.session.add(customer)
+            try:
+                customer = Customer.query.filter_by(seller_id=seller.id, phone=customer_phone).first()
+                if customer:
+                    customer.total_purchases += total
+                    customer.visit_count += 1
+                    customer.last_visit = datetime.utcnow()
+                    if customer_whatsapp:
+                        customer.whatsapp = customer_whatsapp
+                else:
+                    customer = Customer(
+                        seller_id=seller.id,
+                        name=customer_name,
+                        phone=customer_phone,
+                        whatsapp=customer_whatsapp,
+                        total_purchases=total,
+                        visit_count=1,
+                        last_visit=datetime.utcnow()
+                    )
+                    db.session.add(customer)
+            except:
+                pass
         
         db.session.commit()
         
@@ -1249,7 +1243,10 @@ def customer_detail(id):
             flash('Access denied.', 'danger')
             return redirect(url_for('customer_list'))
         
-        purchases = Sale.query.filter_by(seller_id=session['user_id'], customer_id=customer.id).order_by(Sale.sale_date.desc()).all()
+        try:
+            purchases = Sale.query.filter_by(seller_id=session['user_id'], customer_id=customer.id).order_by(Sale.sale_date.desc()).all()
+        except:
+            purchases = []
         
         return render_template('customer_detail.html', customer=customer, purchases=purchases)
     except Exception as e:
@@ -1305,38 +1302,41 @@ def sales_report():
             start_date = today - timedelta(days=today.weekday())
         elif period == 'month':
             start_date = today.replace(day=1)
-        else:  # year
+        else:
             start_date = today.replace(month=1, day=1)
         
-        # Get sales for the period
-        sales = Sale.query.filter(
-            Sale.seller_id == seller.id,
-            Sale.sale_date >= start_date
-        ).order_by(Sale.sale_date.desc()).all()
-        
-        # Calculate totals
-        total_sales = sum(s.total_price for s in sales)
-        total_orders = len(sales)
-        avg_order_value = total_sales / total_orders if total_orders > 0 else 0
-        
-        # Sales by product
-        sales_by_product = db.session.query(
-            Product.name, 
-            db.func.coalesce(db.func.sum(Sale.total_price), 0).label('total'),
-            db.func.coalesce(db.func.count(Sale.id), 0).label('count')
-        ).outerjoin(Sale, Sale.product_id == Product.id).filter(
-            Product.seller_id == seller.id,
-            db.or_(Sale.sale_date >= start_date, Sale.id == None)
-        ).group_by(Product.id).order_by(db.desc('total')).all()
-        
-        # Sales by day
-        sales_by_day = db.session.query(
-            db.func.date(Sale.sale_date).label('date'),
-            db.func.coalesce(db.func.sum(Sale.total_price), 0).label('total')
-        ).filter(
-            Sale.seller_id == seller.id,
-            Sale.sale_date >= start_date
-        ).group_by(db.func.date(Sale.sale_date)).order_by('date').all()
+        try:
+            sales = Sale.query.filter(
+                Sale.seller_id == seller.id,
+                Sale.sale_date >= start_date
+            ).order_by(Sale.sale_date.desc()).all()
+            
+            total_sales = sum(s.total_price for s in sales)
+            total_orders = len(sales)
+            avg_order_value = total_sales / total_orders if total_orders > 0 else 0
+            
+            sales_by_product = db.session.query(
+                Product.name, 
+                db.func.coalesce(db.func.sum(Sale.total_price), 0).label('total'),
+                db.func.coalesce(db.func.count(Sale.id), 0).label('count')
+            ).outerjoin(Sale, Sale.product_id == Product.id).filter(
+                Product.seller_id == seller.id
+            ).group_by(Product.id).order_by(db.desc('total')).all()
+            
+            sales_by_day = db.session.query(
+                db.func.date(Sale.sale_date).label('date'),
+                db.func.coalesce(db.func.sum(Sale.total_price), 0).label('total')
+            ).filter(
+                Sale.seller_id == seller.id,
+                Sale.sale_date >= start_date
+            ).group_by(db.func.date(Sale.sale_date)).order_by('date').all()
+        except:
+            sales = []
+            total_sales = 0
+            total_orders = 0
+            avg_order_value = 0
+            sales_by_product = []
+            sales_by_day = []
         
         return render_template('sales_report.html',
                              period=period,
@@ -1417,10 +1417,7 @@ def checkout():
                 return redirect(url_for('products'))
             
             delivery_address = request.form['delivery_address']
-            delivery_lat = request.form.get('delivery_lat', type=float)
-            delivery_lng = request.form.get('delivery_lng', type=float)
             payment_method = request.form.get('payment_method', 'cash')
-            notes = request.form.get('notes', '')
             user = User.query.get(session['user_id'])
             
             subtotal = 0
@@ -1456,10 +1453,7 @@ def checkout():
                 total=total,
                 status='pending',
                 delivery_address=delivery_address,
-                delivery_lat=delivery_lat,
-                delivery_lng=delivery_lng,
-                payment_method=payment_method,
-                notes=notes
+                payment_method=payment_method
             )
             
             if len(sellers) == 1:
@@ -1485,25 +1479,9 @@ def checkout():
                 db.session.add(order_item)
                 
                 log_inventory_change(product.id, product.seller_id, previous_stock, product.stock, 'order', order.id)
-                
-                sale = Sale(
-                    seller_id=product.seller_id,
-                    product_id=product.id,
-                    quantity=item['quantity'],
-                    unit_price=item['price'],
-                    total_price=item['price'] * item['quantity'],
-                    sale_type='online',
-                    status='pending'
-                )
-                db.session.add(sale)
-            
-            rider = find_nearest_rider(delivery_address)
-            if rider:
-                order.rider_id = rider.id
             
             db.session.commit()
             
-            # Clear cart
             session['cart'] = {}
             
             flash('Order placed successfully!', 'success')
@@ -1515,7 +1493,7 @@ def checkout():
             flash('Error placing order. Please try again.', 'danger')
             return redirect(url_for('cart'))
     
-    # GET request - show checkout form
+    # GET request
     try:
         cart = session.get('cart', {})
         products = []
@@ -1552,7 +1530,6 @@ def order_detail(id):
         order = Order.query.get_or_404(id)
         user = User.query.get(session['user_id'])
         
-        # Check if user has permission to view this order
         if user.role != 'admin' and order.user_id != user.id and order.seller_id != user.id and order.rider_id != user.id:
             flash('Access denied.', 'danger')
             return redirect(url_for('index'))
@@ -1595,7 +1572,6 @@ def track_order(order_id):
         order = Order.query.get_or_404(order_id)
         user = User.query.get(session['user_id'])
         
-        # Check permission
         if user.role != 'admin' and order.user_id != user.id and order.rider_id != user.id:
             flash('Access denied.', 'danger')
             return redirect(url_for('index'))
@@ -1623,32 +1599,35 @@ def update_rider_location():
         rider.longitude = lng
         rider.last_seen = datetime.utcnow()
         
-        # Save location history
-        location = UserLocation(
-            user_id=rider_id,
-            latitude=lat,
-            longitude=lng,
-            accuracy=accuracy
-        )
-        db.session.add(location)
-        
-        # If this is for a specific order, update order tracking
-        if order_id:
-            tracking = OrderTracking(
-                order_id=order_id,
-                rider_lat=lat,
-                rider_lng=lng,
-                status='in_transit',
-                timestamp=datetime.utcnow()
+        try:
+            location = UserLocation(
+                user_id=rider_id,
+                latitude=lat,
+                longitude=lng,
+                accuracy=accuracy
             )
-            db.session.add(tracking)
-            
-            # Emit real-time update via SocketIO
-            socketio.emit(f'order_{order_id}_location', {
-                'lat': lat,
-                'lng': lng,
-                'timestamp': datetime.utcnow().isoformat()
-            }, room=f'order_{order_id}')
+            db.session.add(location)
+        except:
+            pass
+        
+        if order_id:
+            try:
+                tracking = OrderTracking(
+                    order_id=order_id,
+                    rider_lat=lat,
+                    rider_lng=lng,
+                    status='in_transit',
+                    timestamp=datetime.utcnow()
+                )
+                db.session.add(tracking)
+                
+                socketio.emit(f'order_{order_id}_location', {
+                    'lat': lat,
+                    'lng': lng,
+                    'timestamp': datetime.utcnow().isoformat()
+                }, room=f'order_{order_id}')
+            except:
+                pass
         
         db.session.commit()
         
@@ -1702,11 +1681,9 @@ def initiate_video_call():
         receiver = User.query.get_or_404(receiver_id)
         product = Product.query.get(product_id) if product_id else None
         
-        # Check if receiver is online
         if not receiver.is_online:
             return jsonify({'error': 'User is offline'}), 400
         
-        # Create video call room
         room_id = generate_video_room_id()
         
         video_call = VideoCall(
@@ -1720,7 +1697,6 @@ def initiate_video_call():
         db.session.add(video_call)
         db.session.commit()
         
-        # Notify receiver via SocketIO
         socketio.emit('incoming_call', {
             'call_id': video_call.id,
             'room_id': room_id,
@@ -1744,12 +1720,10 @@ def video_call_room(call_id):
     try:
         call = VideoCall.query.get_or_404(call_id)
         
-        # Check permission
         if call.initiator_id != session['user_id'] and call.receiver_id != session['user_id']:
             flash('Access denied.', 'danger')
             return redirect(url_for('index'))
         
-        # Update call status
         if call.status == 'pending':
             call.status = 'active'
             call.started_at = datetime.utcnow()
@@ -1780,7 +1754,6 @@ def end_video_call(call_id):
         call.ended_at = datetime.utcnow()
         db.session.commit()
         
-        # Notify other party
         other_id = call.receiver_id if call.initiator_id == session['user_id'] else call.initiator_id
         socketio.emit('call_ended', {
             'call_id': call_id
@@ -1804,7 +1777,6 @@ def toggle_video_call_ai(call_id):
         call.ai_assistant_active = data.get('active', not call.ai_assistant_active)
         db.session.commit()
         
-        # Notify participants
         socketio.emit('ai_toggled', {
             'call_id': call_id,
             'active': call.ai_assistant_active
@@ -1828,7 +1800,6 @@ def send_video_call_message(call_id):
         message = data.get('message')
         is_ai = data.get('is_ai', False)
         
-        # Save message
         call_message = VideoCallMessage(
             call_id=call_id,
             sender_id=session['user_id'],
@@ -1838,7 +1809,6 @@ def send_video_call_message(call_id):
         db.session.add(call_message)
         db.session.commit()
         
-        # Broadcast to all participants
         socketio.emit('call_message', {
             'call_id': call_id,
             'message': message,
@@ -1861,19 +1831,16 @@ def rider_dashboard():
         rider = User.query.get(session['user_id'])
         deliveries = Order.query.filter_by(rider_id=rider.id).order_by(Order.created_at.desc()).all()
         
-        # Statistics
         completed = sum(1 for o in deliveries if o.status == 'completed')
         pending = sum(1 for o in deliveries if o.status == 'pending')
         in_transit = sum(1 for o in deliveries if o.status == 'in_transit')
-        total_earnings = sum(o.rider_fee for o in deliveries if o.status == 'completed')
         
-        # Get available orders for assignment
         available_orders = Order.query.filter_by(rider_id=None, status='pending').all()
         
         return render_template('rider_dashboard.html', 
                              deliveries=deliveries,
                              available_orders=available_orders,
-                             stats={'completed': completed, 'pending': pending, 'in_transit': in_transit, 'earnings': total_earnings})
+                             stats={'completed': completed, 'pending': pending, 'in_transit': in_transit})
     except Exception as e:
         logger.error(f"Rider dashboard error: {e}")
         flash('Error loading dashboard.', 'danger')
@@ -1888,12 +1855,7 @@ def update_delivery_status(id):
             flash('Access denied.', 'danger')
             return redirect(url_for('rider_dashboard'))
         
-        status = request.form['status']
-        order.status = status
-        
-        if status == 'completed':
-            order.completed_at = datetime.utcnow()
-        
+        order.status = request.form['status']
         db.session.commit()
         
         flash('Delivery status updated!', 'success')
@@ -1936,18 +1898,15 @@ def chat_with_user(receiver_id):
         product_id = request.args.get('product_id')
         product = Product.query.get(product_id) if product_id else None
         
-        # Get conversation history
         messages = Message.query.filter(
             ((Message.sender_id == session['user_id']) & (Message.receiver_id == receiver_id)) |
             ((Message.sender_id == receiver_id) & (Message.receiver_id == session['user_id']))
         ).order_by(Message.created_at).all()
         
-        # Mark messages as read
         unread = Message.query.filter_by(receiver_id=session['user_id'], sender_id=receiver_id, is_read=False).all()
         for msg in unread:
             msg.is_read = True
         
-        # Update session unread count
         if unread:
             db.session.commit()
             total_unread = Message.query.filter_by(receiver_id=session['user_id'], is_read=False).count()
@@ -1997,7 +1956,6 @@ def inbox():
     try:
         user_id = session['user_id']
         
-        # Get all unique conversations
         sent = db.session.query(Message.receiver_id).filter(Message.sender_id == user_id).distinct().subquery()
         received = db.session.query(Message.sender_id).filter(Message.receiver_id == user_id).distinct().subquery()
         
@@ -2023,14 +1981,12 @@ def inbox():
                 'unread_count': unread_count
             })
         
-        # Sort by last message time
         conversations.sort(key=lambda x: x['last_message'].created_at if x['last_message'] else datetime.min, reverse=True)
         
         return render_template('inbox.html', conversations=conversations)
     except Exception as e:
         logger.error(f"Inbox error: {e}")
-        flash('Error loading inbox.', 'danger')
-        return redirect(url_for('index'))
+        return render_template('inbox.html', conversations=[])
 
 # ===== ENHANCED COMMUNITY FEATURES =====
 
@@ -2065,7 +2021,6 @@ def community():
         return redirect(url_for('community'))
     
     try:
-        # Filter posts
         filter_type = request.args.get('filter', 'all')
         page = request.args.get('page', 1, type=int)
         per_page = 10
@@ -2077,13 +2032,8 @@ def community():
         
         posts = query.order_by(Post.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
         
-        # Get all users for reviews
         users = User.query.filter(User.id != session['user_id']).limit(10).all()
-        
-        # Get post types for filter
         post_types = ['general', 'question', 'suggestion', 'feedback']
-        
-        # Get recent activity
         recent_posts = Post.query.order_by(Post.created_at.desc()).limit(5).all()
         
         return render_template('community.html', 
@@ -2095,8 +2045,7 @@ def community():
                              recent_posts=recent_posts)
     except Exception as e:
         logger.error(f"Community error: {e}")
-        flash('Error loading community.', 'danger')
-        return redirect(url_for('index'))
+        return render_template('community.html', posts=[], pagination=None, users=[], post_types=[], current_filter='all')
 
 @app.route('/post/<int:id>', methods=['GET', 'POST'])
 @login_required
@@ -2122,10 +2071,7 @@ def view_post(id):
             flash('Comment added!', 'success')
             return redirect(url_for('view_post', id=post.id))
         
-        # Get comments with user info
-        comments = Comment.query.filter_by(post_id=post.id)\
-                               .order_by(Comment.created_at)\
-                               .all()
+        comments = Comment.query.filter_by(post_id=post.id).order_by(Comment.created_at).all()
         
         return render_template('view_post.html', post=post, comments=comments)
     except Exception as e:
@@ -2154,11 +2100,9 @@ def delete_post(id):
     try:
         post = Post.query.get_or_404(id)
         
-        # Check if user owns the post or is admin
         if post.user_id != session['user_id'] and session['role'] != 'admin':
             return jsonify({'success': False, 'error': 'Unauthorized'}), 403
         
-        # Delete comments first
         Comment.query.filter_by(post_id=id).delete()
         db.session.delete(post)
         db.session.commit()
@@ -2177,7 +2121,6 @@ def review_user(user_id):
         reviewed_user = User.query.get_or_404(user_id)
         order_id = request.args.get('order_id')
         
-        # Check if already reviewed
         existing_review = Review.query.filter_by(reviewer_id=session['user_id'], reviewed_id=user_id).first()
         if existing_review and not order_id:
             flash('You have already reviewed this user.', 'warning')
@@ -2217,13 +2160,10 @@ def ai_assistant():
         
         if co:
             try:
-                # Get context about the user
                 user = User.query.get(session['user_id'])
                 
-                # Get user's recent orders for context
                 recent_orders = Order.query.filter_by(user_id=user.id).order_by(Order.created_at.desc()).limit(3).all()
                 
-                # Build context for AI
                 context = f"The user is a {user.role} named {user.username}. "
                 if recent_orders:
                     order_list = []
@@ -2232,7 +2172,6 @@ def ai_assistant():
                         order_list.append(f"Order #{order.id}: {', '.join(items)}")
                     context += f"They recently ordered: {'; '.join(order_list)}. "
                 
-                # Get marketplace stats
                 product_count = Product.query.filter_by(is_active=True).count()
                 seller_count = User.query.filter_by(role='seller').count()
                 context += f"The marketplace has {product_count} products from {seller_count} sellers. "
@@ -2254,12 +2193,11 @@ def ai_assistant():
             except ImportError:
                 response_text = "Cohere library not properly configured."
             except Exception as e:
-                response_text = f"AI service temporarily unavailable. Please try again later."
+                response_text = f"AI service temporarily unavailable."
                 logger.error(f"AI Error: {str(e)}")
         else:
-            response_text = "AI assistant is currently unavailable. Please contact support if this persists."
+            response_text = "AI assistant is currently unavailable."
     
-    # Generate contextual suggestions
     suggestions = [
         "What are today's specials?",
         "How do I track my order?",
@@ -2274,6 +2212,37 @@ def ai_assistant():
                          user_message=user_message,
                          suggestions=suggestions)
 
+@app.route('/api/ai/quick', methods=['POST'])
+def ai_quick_question():
+    """Quick AI endpoint for homepage"""
+    if not co:
+        return jsonify({'response': 'AI assistant is currently unavailable.'})
+    
+    data = request.get_json()
+    question = data.get('message', '')
+    
+    if not question:
+        return jsonify({'response': 'Please ask a question.'})
+    
+    try:
+        # Simple response without user context for guests
+        response = co.chat(
+            message=question,
+            model="command",
+            preamble="You are a helpful assistant for Fresh Marketplace, a food delivery platform.",
+            temperature=0.7
+        )
+        
+        if hasattr(response, 'text'):
+            answer = response.text
+        else:
+            answer = str(response)
+        
+        return jsonify({'response': answer})
+    except Exception as e:
+        logger.error(f"AI Quick Error: {e}")
+        return jsonify({'response': 'AI service temporarily unavailable.'})
+
 # ===== NOTIFICATION API =====
 
 @app.route('/api/notifications')
@@ -2281,11 +2250,7 @@ def ai_assistant():
 def get_notifications():
     try:
         user_id = session['user_id']
-        
-        # Get unread messages count
         unread_count = Message.query.filter_by(receiver_id=user_id, is_read=False).count()
-        
-        # Get latest unread message
         latest_message = Message.query.filter_by(receiver_id=user_id, is_read=False)\
                                      .order_by(Message.created_at.desc()).first()
         
@@ -2298,6 +2263,152 @@ def get_notifications():
         logger.error(f"Notifications error: {e}")
         return jsonify({'unread_count': 0, 'latest_message': None, 'sender': None})
 
+# ===== ADMIN USER MANAGEMENT =====
+
+@app.route('/admin/users')
+@role_required('admin')
+def admin_users():
+    users = User.query.order_by(User.created_at.desc()).all()
+    return render_template('admin_users.html', users=users)
+
+@app.route('/admin/user/<int:user_id>')
+@role_required('admin')
+def admin_user_detail(user_id):
+    user = User.query.get_or_404(user_id)
+    return render_template('admin_user_detail.html', user=user)
+
+@app.route('/admin/user/<int:user_id>/edit', methods=['GET', 'POST'])
+@role_required('admin')
+def admin_edit_user(user_id):
+    user = User.query.get_or_404(user_id)
+    
+    if request.method == 'POST':
+        try:
+            user.username = request.form['username']
+            user.email = request.form['email']
+            user.role = request.form['role']
+            user.phone_number = request.form['phone_number']
+            user.whatsapp_number = request.form.get('whatsapp_number', '')
+            user.location = request.form.get('location', '')
+            user.business_name = request.form.get('business_name', '')
+            user.business_address = request.form.get('business_address', '')
+            
+            if request.form.get('new_password'):
+                user.password = generate_password_hash(request.form['new_password'])
+            
+            if 'profile_image' in request.files:
+                file = request.files['profile_image']
+                if file and file.filename and allowed_file(file.filename):
+                    filename = secure_filename(f"{user.username}_{uuid.uuid4().hex[:8]}_{file.filename}")
+                    file.save(os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], filename))
+                    user.profile_image = f'/static/uploads/{filename}'
+            
+            db.session.commit()
+            flash('User updated successfully!', 'success')
+            return redirect(url_for('admin_user_detail', user_id=user.id))
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Admin edit user error: {e}")
+            flash('Error updating user.', 'danger')
+    
+    return render_template('admin_edit_user.html', user=user)
+
+@app.route('/admin/user/<int:user_id>/delete', methods=['POST'])
+@role_required('admin')
+def admin_delete_user(user_id):
+    user = User.query.get_or_404(user_id)
+    
+    if user.id == session['user_id']:
+        flash('You cannot delete your own account.', 'danger')
+        return redirect(url_for('admin_users'))
+    
+    try:
+        db.session.delete(user)
+        db.session.commit()
+        flash('User deleted successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Admin delete user error: {e}")
+        flash('Error deleting user.', 'danger')
+    
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/impersonate/<int:user_id>')
+@role_required('admin')
+def impersonate_user(user_id):
+    user = User.query.get_or_404(user_id)
+    
+    # Store original admin ID in session
+    session['admin_original_id'] = session['user_id']
+    session['admin_original_name'] = session['username']
+    
+    # Set session to target user
+    session['user_id'] = user.id
+    session['username'] = user.username
+    session['role'] = user.role
+    session['profile_image'] = user.profile_image
+    session['impersonating'] = True
+    
+    flash(f'Now impersonating {user.username}.', 'success')
+    
+    if user.role == 'seller':
+        return redirect(url_for('seller_dashboard'))
+    elif user.role == 'rider':
+        return redirect(url_for('rider_dashboard'))
+    else:
+        return redirect(url_for('index'))
+
+@app.route('/admin/stop-impersonating')
+@login_required
+def stop_impersonating():
+    if 'admin_original_id' in session:
+        # Restore original admin session
+        session['user_id'] = session['admin_original_id']
+        session['username'] = session['admin_original_name']
+        session['role'] = 'admin'
+        session['profile_image'] = User.query.get(session['user_id']).profile_image
+        
+        # Clear impersonation data
+        session.pop('admin_original_id', None)
+        session.pop('admin_original_name', None)
+        session.pop('impersonating', None)
+        
+        flash('Stopped impersonating.', 'success')
+        return redirect(url_for('admin_users'))
+    
+    return redirect(url_for('index'))
+
+@app.route('/admin/products')
+@role_required('admin')
+def admin_products():
+    products = Product.query.order_by(Product.created_at.desc()).all()
+    return render_template('admin_products.html', products=products)
+
+@app.route('/admin/product/<int:id>/toggle', methods=['POST'])
+@role_required('admin')
+def admin_toggle_product(id):
+    product = Product.query.get_or_404(id)
+    product.is_active = not product.is_active
+    db.session.commit()
+    flash(f'Product {"activated" if product.is_active else "deactivated"} successfully!', 'success')
+    return redirect(url_for('admin_products'))
+
+@app.route('/admin/product/<int:id>/delete', methods=['POST'])
+@role_required('admin')
+def admin_delete_product(id):
+    product = Product.query.get_or_404(id)
+    
+    try:
+        db.session.delete(product)
+        db.session.commit()
+        flash('Product deleted successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Admin delete product error: {e}")
+        flash('Error deleting product.', 'danger')
+    
+    return redirect(url_for('admin_products'))
+
 # ===== ADMIN DASHBOARD =====
 
 @app.route('/admin/dashboard')
@@ -2308,24 +2419,13 @@ def admin_dashboard():
         products = Product.query.all()
         orders = Order.query.order_by(Order.created_at.desc()).limit(50).all()
         
-        # Statistics
         total_users = len(users)
         total_sellers = len([u for u in users if u.role == 'seller'])
         total_riders = len([u for u in users if u.role == 'rider'])
         total_buyers = len([u for u in users if u.role == 'buyer'])
-        
         total_products = len(products)
         total_orders = Order.query.count()
         pending_orders = Order.query.filter_by(status='pending').count()
-        completed_orders = Order.query.filter_by(status='completed').count()
-        
-        # Revenue stats
-        total_revenue = db.session.query(db.func.coalesce(db.func.sum(Order.total), 0)).scalar()
-        total_platform_fees = db.session.query(db.func.coalesce(db.func.sum(Order.platform_fee), 0)).scalar()
-        total_rider_fees = db.session.query(db.func.coalesce(db.func.sum(Order.rider_fee), 0)).scalar()
-        
-        # Active calls
-        active_calls = VideoCall.query.filter_by(status='active').count()
         
         stats = {
             'total_users': total_users,
@@ -2334,12 +2434,7 @@ def admin_dashboard():
             'total_buyers': total_buyers,
             'total_products': total_products,
             'total_orders': total_orders,
-            'pending_orders': pending_orders,
-            'completed_orders': completed_orders,
-            'total_revenue': float(total_revenue or 0),
-            'total_platform_fees': float(total_platform_fees or 0),
-            'total_rider_fees': float(total_rider_fees or 0),
-            'active_calls': active_calls
+            'pending_orders': pending_orders
         }
         
         return render_template('admin_dashboard.html', 
@@ -2420,7 +2515,7 @@ def init_db():
         # Create tables
         db.create_all()
         
-        # Check if admin exists
+        # Create admin if not exists
         if not User.query.filter_by(username='admin').first():
             admin = User(
                 username='admin',
@@ -2428,12 +2523,12 @@ def init_db():
                 password=generate_password_hash('admin123'),
                 role='admin',
                 phone_number='1234567890',
-                location='Main Office',
-                profile_image='/static/images/default-profile.png'
+                location='Main Office'
             )
             db.session.add(admin)
-            
-            # Add sample seller
+        
+        # Create seller if not exists
+        if not User.query.filter_by(username='seller1').first():
             seller = User(
                 username='seller1',
                 email='seller@marketplace.com',
@@ -2441,81 +2536,33 @@ def init_db():
                 role='seller',
                 phone_number='5551234567',
                 location='Market Street',
-                business_name='Fresh Farm Produce',
-                business_address='123 Farm Road',
-                profile_image='/static/images/default-profile.png'
+                business_name='Fresh Farm Produce'
             )
             db.session.add(seller)
-            
-            # Add sample rider
+        
+        # Create rider if not exists
+        if not User.query.filter_by(username='rider1').first():
             rider = User(
                 username='rider1',
                 email='rider@marketplace.com',
                 password=generate_password_hash('rider123'),
                 role='rider',
                 phone_number='0987654321',
-                location='Downtown',
-                profile_image='/static/images/default-profile.png'
+                location='Downtown'
             )
             db.session.add(rider)
-            
-            # Add sample buyer
+        
+        # Create buyer if not exists
+        if not User.query.filter_by(username='buyer1').first():
             buyer = User(
                 username='buyer1',
                 email='buyer@marketplace.com',
                 password=generate_password_hash('buyer123'),
                 role='buyer',
                 phone_number='5559876543',
-                location='Nairobi',
-                profile_image='/static/images/default-profile.png'
+                location='Nairobi'
             )
             db.session.add(buyer)
-            
-            db.session.flush()
-            
-            # Add sample products
-            products = [
-                Product(name='Fresh Apples', description='Crisp and sweet red apples from local farms', 
-                       base_price=3.99, category='Fruits', 
-                       image_url='https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400', 
-                       stock=50, seller_id=seller.id, sku='FRUIT-001', video_call_enabled=True),
-                Product(name='Organic Bananas', description='Yellow ripe bananas, rich in potassium', 
-                       base_price=2.49, category='Fruits',
-                       image_url='https://images.unsplash.com/photo-1603833665858-e61d17a86224?w=400', 
-                       stock=100, seller_id=seller.id, sku='FRUIT-002', video_call_enabled=True),
-                Product(name='Fresh Tomatoes', description='Ripe red tomatoes perfect for salads', 
-                       base_price=4.99, category='Vegetables',
-                       image_url='https://images.unsplash.com/photo-1546094096-0df4bcaaa337?w=400', 
-                       stock=75, seller_id=seller.id, sku='VEG-001', video_call_enabled=True),
-                Product(name='Green Lettuce', description='Fresh crispy lettuce for healthy meals', 
-                       base_price=2.99, category='Vegetables',
-                       image_url='https://images.unsplash.com/photo-1622206151226-18ca2c9ab4a1?w=400', 
-                       stock=60, seller_id=seller.id, sku='VEG-002', video_call_enabled=True),
-                Product(name='Orange Juice', description='Fresh squeezed orange juice, no preservatives', 
-                       base_price=5.99, category='Beverages',
-                       image_url='https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=400', 
-                       stock=40, seller_id=seller.id, sku='BEV-001', video_call_enabled=True),
-                Product(name='Fresh Carrots', description='Crunchy orange carrots rich in vitamin A', 
-                       base_price=3.49, category='Vegetables',
-                       image_url='https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?w=400', 
-                       stock=80, seller_id=seller.id, sku='VEG-003', video_call_enabled=True),
-                Product(name='Strawberries', description='Sweet red strawberries, perfect for desserts', 
-                       base_price=6.99, category='Fruits',
-                       image_url='https://images.unsplash.com/photo-1464965911861-746a04b4bca6?w=400', 
-                       stock=45, seller_id=seller.id, sku='FRUIT-003', video_call_enabled=True),
-                Product(name='Bell Peppers', description='Colorful bell peppers for cooking', 
-                       base_price=4.49, category='Vegetables',
-                       image_url='https://images.unsplash.com/photo-1563565375-f3fdfdbefa83?w=400', 
-                       stock=55, seller_id=seller.id, sku='VEG-004', video_call_enabled=True),
-            ]
-            
-            for product in products:
-                final_price, rider_fee, platform_fee = calculate_price_with_fees(product.base_price)
-                product.price = final_price
-                db.session.add(product)
-            
-            db.session.commit()
-            logger.info('✅ Database initialized with sample data!')
         
         # Create superuser
         if not User.query.filter_by(username='benedict431').first():
@@ -2527,24 +2574,68 @@ def init_db():
                 phone_number='+254700000000',
                 whatsapp_number='+254700000000',
                 location='Nairobi, Kenya',
-                profile_image='/static/images/default-profile.png',
-                business_name='Super Admin',
-                business_address='Admin Office'
+                business_name='Super Admin'
             )
             db.session.add(superuser)
-            db.session.commit()
-            logger.info("✅ Superuser 'benedict431' created!")
+        
+        db.session.commit()
+        
+        # Create sample products if none exist
+        if Product.query.count() == 0:
+            seller = User.query.filter_by(role='seller').first() or User.query.filter_by(role='admin').first()
+            
+            if seller:
+                products = [
+                    Product(
+                        name='Fresh Apples',
+                        description='Crisp and sweet red apples',
+                        base_price=3.99,
+                        price=4.79,
+                        category='Fruits',
+                        image_url='https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400',
+                        stock=50,
+                        sku='FRUIT-001',
+                        seller_id=seller.id
+                    ),
+                    Product(
+                        name='Organic Bananas',
+                        description='Yellow ripe bananas',
+                        base_price=2.49,
+                        price=2.99,
+                        category='Fruits',
+                        image_url='https://images.unsplash.com/photo-1603833665858-e61d17a86224?w=400',
+                        stock=100,
+                        sku='FRUIT-002',
+                        seller_id=seller.id
+                    ),
+                    Product(
+                        name='Fresh Tomatoes',
+                        description='Ripe red tomatoes',
+                        base_price=4.99,
+                        price=5.99,
+                        category='Vegetables',
+                        image_url='https://images.unsplash.com/photo-1546094096-0df4bcaaa337?w=400',
+                        stock=75,
+                        sku='VEG-001',
+                        seller_id=seller.id
+                    )
+                ]
+                
+                for product in products:
+                    db.session.add(product)
+                
+                db.session.commit()
+                logger.info("Sample products created")
 
-# Initialize database on startup
+# Initialize database
 with app.app_context():
     try:
-        # Create tables
         db.create_all()
         init_db()
-        logger.info("✅ Database initialization complete!")
-        logger.info("✅ Demo users: admin/admin123, seller1/seller123, rider1/rider123, buyer1/buyer123")
+        logger.info("Database initialized successfully")
+        logger.info("Demo users: admin/admin123, seller1/seller123, rider1/rider123, buyer1/buyer123, benedict431/28734495")
     except Exception as e:
-        logger.error(f"❌ Database initialization error: {e}")
+        logger.error(f"Database initialization error: {e}")
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
