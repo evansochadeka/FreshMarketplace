@@ -1,50 +1,247 @@
 {% extends "base.html" %}
 
+{% block title %}Add Product - Fresh Marketplace{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-8">
         <h1 class="mb-4">Add New Product</h1>
+        
+        <!-- Price Calculator Info -->
+        <div class="alert alert-info mb-4">
+            <h5><i class="bi bi-calculator"></i> Price Calculation</h5>
+            <p class="mb-0">Your product price will include:</p>
+            <ul class="mb-0">
+                <li>Your base price (what you earn)</li>
+                <li><strong>+10% rider fee</strong> (for delivery partners)</li>
+                <li><strong>+10% platform fee</strong> (for marketplace services)</li>
+            </ul>
+            <p class="mt-2 mb-0"><strong>Final price = Base price + 20%</strong></p>
+        </div>
+
         <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-plus-circle"></i> Product Details</h5>
+            </div>
             <div class="card-body">
-                <form method="POST">
+                <form method="POST" enctype="multipart/form-data" id="productForm">
                     <div class="mb-3">
                         <label class="form-label">Product Name</label>
                         <input type="text" name="name" class="form-control" required>
                     </div>
+                    
                     <div class="mb-3">
                         <label class="form-label">Description</label>
                         <textarea name="description" class="form-control" rows="3" required></textarea>
                     </div>
+                    
                     <div class="row">
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Price (Kes)</label>
-                            <input type="number" step="0.01" name="price" class="form-control" required>
+                            <label class="form-label">Base Price (what you earn) *</label>
+                            <div class="input-group">
+                                <span class="input-group-text">Kes</span>
+                                <input type="number" step="0.01" name="base_price" class="form-control" id="basePrice" required onkeyup="calculateFinalPrice()">
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Final Price (customer pays)</label>
+                            <div class="input-group">
+                                <span class="input-group-text">Kes</span>
+                                <input type="text" class="form-control" id="finalPrice" readonly>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Category</label>
+                            <select name="category" class="form-select" required>
+                                <option value="Fruits">Fruits</option>
+                                <option value="Vegetables">Vegetables</option>
+                                <option value="Beverages">Beverages</option>
+                                <option value="Dairy">Dairy</option>
+                                <option value="Other">Other</option>
+                            </select>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Stock</label>
                             <input type="number" name="stock" class="form-control" required>
                         </div>
                     </div>
+                    
+                    <!-- Image Upload with Camera Option -->
                     <div class="mb-3">
-                        <label class="form-label">Category</label>
-                        <select name="category" class="form-select" required>
-                            <option value="Fruits">Fruits</option>
-                            <option value="Vegetables">Vegetables</option>
-                            <option value="Beverages">Beverages</option>
-                            <option value="Dairy">Dairy</option>
-                            <option value="Other">Other</option>
-                        </select>
+                        <label class="form-label">Product Image</label>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-header bg-light">
+                                        <h6 class="mb-0"><i class="bi bi-file-earmark-image"></i> Upload from Device</h6>
+                                    </div>
+                                    <div class="card-body text-center">
+                                        <input type="file" name="product_image" class="form-control" accept="image/*" id="fileUpload">
+                                        <div class="mt-2" id="filePreview"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-header bg-light">
+                                        <h6 class="mb-0"><i class="bi bi-camera"></i> Take Photo with Camera</h6>
+                                    </div>
+                                    <div class="card-body text-center">
+                                        <button type="button" class="btn btn-outline-primary mb-2" onclick="openCamera()">
+                                            <i class="bi bi-camera"></i> Open Camera
+                                        </button>
+                                        <div id="camera" style="display: none;">
+                                            <video id="video" width="100%" height="200" autoplay></video>
+                                            <button type="button" class="btn btn-success btn-sm mt-2" onclick="capturePhoto()">
+                                                <i class="bi bi-camera"></i> Capture
+                                            </button>
+                                            <button type="button" class="btn btn-danger btn-sm mt-2" onclick="closeCamera()">
+                                                <i class="bi bi-x-circle"></i> Close
+                                            </button>
+                                        </div>
+                                        <canvas id="canvas" style="display: none;"></canvas>
+                                        <div class="mt-2" id="cameraPreview"></div>
+                                        <input type="hidden" name="captured_image" id="capturedImage">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <small class="text-muted mt-2 d-block">You can either upload an image or take a photo with your camera</small>
                     </div>
+                    
+                    <!-- OR Option -->
                     <div class="mb-3">
-                        <label class="form-label">Image URL</label>
-                        <input type="url" name="image_url" class="form-control" required>
-                        <small class="text-muted">Use Unsplash URLs for best results</small>
+                        <label class="form-label">Or use Image URL</label>
+                        <input type="url" name="image_url" class="form-control" placeholder="https://example.com/image.jpg">
                     </div>
-                    <button type="submit" class="btn btn-success">Add Product</button>
-                    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">Cancel</a>
+                    
+                    <div class="form-check mb-3">
+                        <input type="checkbox" name="video_call_enabled" class="form-check-input" id="videoCall" checked>
+                        <label class="form-check-label" for="videoCall">Enable Video Calls for this product</label>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="d-flex justify-content-end">
+                        <a href="{{ url_for('seller_products') }}" class="btn btn-secondary me-2">Cancel</a>
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-check-circle"></i> Add Product
+                        </button>
+                    </div>
                 </form>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+function calculateFinalPrice() {
+    const basePrice = parseFloat(document.getElementById('basePrice').value) || 0;
+    const riderFee = basePrice * 0.10;
+    const platformFee = basePrice * 0.10;
+    const finalPrice = basePrice + riderFee + platformFee;
+    document.getElementById('finalPrice').value = finalPrice.toFixed(2);
+}
+
+// Camera functionality
+let stream = null;
+
+function openCamera() {
+    document.getElementById('camera').style.display = 'block';
+    
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(function(videoStream) {
+                stream = videoStream;
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                video.play();
+            })
+            .catch(function(error) {
+                alert('Could not access camera: ' + error.message);
+            });
+    }
+}
+
+function closeCamera() {
+    if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+    }
+    document.getElementById('camera').style.display = 'none';
+    document.getElementById('video').srcObject = null;
+}
+
+function capturePhoto() {
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const context = canvas.getContext('2d');
+    
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    const imageData = canvas.toDataURL('image/png');
+    document.getElementById('capturedImage').value = imageData;
+    
+    // Show preview
+    document.getElementById('cameraPreview').innerHTML = '<img src="' + imageData + '" class="img-fluid rounded" style="max-height: 150px;">';
+    
+    closeCamera();
+}
+
+// File upload preview
+document.getElementById('fileUpload').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('filePreview').innerHTML = '<img src="' + e.target.result + '" class="img-fluid rounded" style="max-height: 150px;">';
+        };
+        reader.readAsDataURL(file);
+    }
+});
+
+// Form submission - handle captured image
+document.getElementById('productForm').addEventListener('submit', function(e) {
+    const capturedImage = document.getElementById('capturedImage').value;
+    if (capturedImage && !document.getElementById('fileUpload').files.length) {
+        // Convert base64 to blob and add to form
+        const block = capturedImage.split(';');
+        const contentType = block[0].split(':')[1];
+        const realData = block[1].split(',')[1];
+        
+        const blob = b64toBlob(realData, contentType);
+        const file = new File([blob], 'captured-image.png', { type: contentType });
+        
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+        document.getElementById('fileUpload').files = dataTransfer.files;
+    }
+});
+
+// Helper function to convert base64 to blob
+function b64toBlob(b64Data, contentType) {
+    const sliceSize = 512;
+    const byteCharacters = atob(b64Data);
+    const byteArrays = [];
+    
+    for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+        const slice = byteCharacters.slice(offset, offset + sliceSize);
+        const byteNumbers = new Array(slice.length);
+        
+        for (let i = 0; i < slice.length; i++) {
+            byteNumbers[i] = slice.charCodeAt(i);
+        }
+        
+        const byteArray = new Uint8Array(byteNumbers);
+        byteArrays.push(byteArray);
+    }
+    
+    return new Blob(byteArrays, { type: contentType });
+}
+</script>
 {% endblock %}
