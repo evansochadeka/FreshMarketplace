@@ -6,6 +6,7 @@
     <title>{% block title %}Fresh Marketplace{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
         :root {
             --primary-green: #198754;
@@ -69,6 +70,16 @@
             color: #ffc107;
         }
         
+        @keyframes notificationPulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        
+        .notification-pulse {
+            animation: notificationPulse 0.5s ease-in-out;
+        }
+        
         .dropdown-menu {
             border: none;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
@@ -125,7 +136,7 @@
             border-top: 1px solid #dee2e6;
         }
         
-        /* Floating Icons */
+        /* Floating Chat and AI Icons */
         .floating-icons {
             position: fixed;
             bottom: 20px;
@@ -149,13 +160,11 @@
             transition: all 0.3s;
             cursor: pointer;
             border: none;
-            text-decoration: none;
         }
         
         .floating-icon:hover {
             transform: scale(1.1);
             box-shadow: 0 6px 16px rgba(0,0,0,0.3);
-            color: white;
         }
         
         .floating-icon.ai {
@@ -172,18 +181,16 @@
     </style>
 </head>
 <body>
-    <!-- Impersonation Banner -->
     {% if session.get('impersonating') %}
     <div class="impersonate-banner">
         <i class="bi bi-person-badge"></i> 
         You are currently impersonating <strong>{{ session.username }}</strong> 
         <a href="{{ url_for('stop_impersonating') }}" class="btn btn-sm btn-dark ms-3">
-            <i class="bi bi-x-circle"></i> Stop
+            <i class="bi bi-x-circle"></i> Stop Impersonating
         </a>
     </div>
     {% endif %}
 
-    <!-- Navigation Bar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-success">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('index') }}">
@@ -193,22 +200,26 @@
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <!-- Left side navigation -->
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('index') }}">Home</a>
+                        <a class="nav-link" href="{{ url_for('index') }}">
+                            <i class="bi bi-house"></i> Home
+                        </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('products') }}">Products</a>
+                        <a class="nav-link" href="{{ url_for('products') }}">
+                            <i class="bi bi-grid"></i> Products
+                        </a>
                     </li>
                     {% if session.user_id %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('community') }}">Community</a>
+                        <a class="nav-link" href="{{ url_for('community') }}">
+                            <i class="bi bi-people"></i> Community
+                        </a>
                     </li>
                     {% endif %}
                 </ul>
 
-                <!-- Right side navigation -->
                 <ul class="navbar-nav">
                     <!-- AI Assistant Icon -->
                     <li class="nav-item">
@@ -223,7 +234,9 @@
                             <a class="nav-link position-relative" href="{{ url_for('cart') }}" title="Shopping Cart">
                                 <i class="bi bi-cart3"></i>
                                 {% if session.get('cart') and session.cart|length > 0 %}
-                                <span class="notification-badge cart-badge">{{ session.cart|length }}</span>
+                                <span class="notification-badge cart-badge">
+                                    {{ session.cart|length }}
+                                </span>
                                 {% endif %}
                             </a>
                         </li>
@@ -235,7 +248,7 @@
                             </a>
                         </li>
                         
-                        <!-- Inbox -->
+                        <!-- Inbox with Unread Badge -->
                         <li class="nav-item">
                             <a class="nav-link position-relative" href="{{ url_for('inbox') }}" title="Messages">
                                 <i class="bi bi-envelope"></i>
@@ -245,7 +258,7 @@
                             </a>
                         </li>
                         
-                        <!-- Role-based menus -->
+                        <!-- Role-specific menus -->
                         {% if session.role == 'rider' %}
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('rider_dashboard') }}" title="Rider Dashboard">
@@ -256,58 +269,96 @@
                         
                         {% if session.role == 'seller' %}
                         <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                                <i class="bi bi-shop"></i> <span class="d-none d-lg-inline">Seller</span>
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" title="Seller Tools">
+                                <i class="bi bi-shop"></i>
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end">
-                                <li><a class="dropdown-item" href="{{ url_for('seller_dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
-                                <li><a class="dropdown-item" href="{{ url_for('seller_products') }}"><i class="bi bi-box"></i> My Products</a></li>
-                                <li><a class="dropdown-item" href="{{ url_for('seller_inventory') }}"><i class="bi bi-clipboard-data"></i> Inventory</a></li>
-                                <li><a class="dropdown-item" href="{{ url_for('pos_dashboard') }}"><i class="bi bi-calculator"></i> POS System</a></li>
-                                <li><a class="dropdown-item" href="{{ url_for('sales_report') }}"><i class="bi bi-graph-up"></i> Sales Reports</a></li>
-                                <li><a class="dropdown-item" href="{{ url_for('customer_list') }}"><i class="bi bi-people"></i> Customers</a></li>
-                                <li><a class="dropdown-item" href="{{ url_for('seller_inquiries') }}"><i class="bi bi-question-circle"></i> Inquiries</a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('seller_dashboard') }}">
+                                    <i class="bi bi-speedometer2"></i> Dashboard
+                                </a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('seller_products') }}">
+                                    <i class="bi bi-box"></i> My Products
+                                </a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('seller_inventory') }}">
+                                    <i class="bi bi-clipboard-data"></i> Inventory
+                                </a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('pos_dashboard') }}">
+                                    <i class="bi bi-calculator"></i> POS System
+                                </a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('sales_report') }}">
+                                    <i class="bi bi-graph-up"></i> Sales Reports
+                                </a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('customer_list') }}">
+                                    <i class="bi bi-people"></i> Customers
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="{{ url_for('seller_inquiries') }}">
+                                    <i class="bi bi-question-circle"></i> Inquiries
+                                    {% if stats and stats.pending_inquiries > 0 %}
+                                    <span class="badge bg-danger ms-2">{{ stats.pending_inquiries }}</span>
+                                    {% endif %}
+                                </a></li>
                             </ul>
                         </li>
                         {% endif %}
                         
                         {% if session.role == 'admin' %}
                         <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                                <i class="bi bi-shield-lock"></i> <span class="d-none d-lg-inline">Admin</span>
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" title="Admin Tools">
+                                <i class="bi bi-shield-lock"></i>
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end">
-                                <li><a class="dropdown-item" href="{{ url_for('admin_dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
-                                <li><a class="dropdown-item" href="{{ url_for('admin_users') }}"><i class="bi bi-people"></i> User Management</a></li>
-                                <li><a class="dropdown-item" href="{{ url_for('admin_products') }}"><i class="bi bi-box"></i> Product Management</a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('admin_dashboard') }}">
+                                    <i class="bi bi-speedometer2"></i> Dashboard
+                                </a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('admin_users') }}">
+                                    <i class="bi bi-people"></i> User Management
+                                </a></li>
+                                <li><a class="dropdown-item" href="{{ url_for('admin_products') }}">
+                                    <i class="bi bi-box"></i> Product Management
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-warning" href="#" onclick="alert('Analytics coming soon!')">
+                                    <i class="bi bi-graph-up"></i> Analytics
+                                </a></li>
                             </ul>
                         </li>
                         {% endif %}
                         
-                        <!-- User Profile -->
+                        <!-- User Profile Dropdown -->
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown">
                                 {% if session.profile_image %}
-                                <img src="{{ session.profile_image }}" class="profile-image" alt="Profile">
+                                <img src="{{ session.profile_image }}" class="profile-image me-1" alt="Profile">
                                 {% else %}
-                                <i class="bi bi-person-circle fs-4"></i>
+                                <i class="bi bi-person-circle fs-4 me-1"></i>
                                 {% endif %}
-                                <span class="d-none d-lg-inline ms-1">{{ session.username }}</span>
+                                <span class="d-none d-lg-inline">{{ session.username }}</span>
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end">
-                                <li><a class="dropdown-item" href="#"><i class="bi bi-person"></i> Profile</a></li>
-                                <li><a class="dropdown-item" href="#"><i class="bi bi-gear"></i> Settings</a></li>
+                                <li><a class="dropdown-item" href="#">
+                                    <i class="bi bi-person"></i> My Profile
+                                </a></li>
+                                <li><a class="dropdown-item" href="#">
+                                    <i class="bi bi-gear"></i> Settings
+                                </a></li>
                                 <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}"><i class="bi bi-box-arrow-right"></i> Logout</a></li>
+                                <li><a class="dropdown-item text-danger" href="{{ url_for('logout') }}">
+                                    <i class="bi bi-box-arrow-right"></i> Logout
+                                </a></li>
                             </ul>
                         </li>
                     {% else %}
                         <!-- Not logged in -->
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('login') }}">Login</a>
+                            <a class="nav-link" href="{{ url_for('login') }}">
+                                <i class="bi bi-box-arrow-in-right"></i> Login
+                            </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ url_for('register') }}">Register</a>
+                            <a class="nav-link" href="{{ url_for('register') }}">
+                                <i class="bi bi-person-plus"></i> Register
+                            </a>
                         </li>
                     {% endif %}
                 </ul>
@@ -315,7 +366,7 @@
         </div>
     </nav>
 
-    <!-- Floating Icons -->
+    <!-- Floating Icons for Quick Access -->
     <div class="floating-icons">
         <a href="{{ url_for('ai_assistant') }}" class="floating-icon ai" title="AI Assistant">
             <i class="bi bi-robot"></i>
@@ -334,14 +385,22 @@
         {% endif %}
     </div>
 
-    <!-- Main Content -->
+    <!-- Main Content Container -->
     <div class="container mt-4">
         <!-- Flash Messages -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-                        <i class="bi bi-{{ 'check-circle' if category == 'success' else 'exclamation-triangle' if category == 'danger' else 'info-circle' }} me-2"></i>
+                    <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm" role="alert">
+                        {% if category == 'success' %}
+                            <i class="bi bi-check-circle-fill me-2"></i>
+                        {% elif category == 'danger' %}
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        {% elif category == 'warning' %}
+                            <i class="bi bi-exclamation-circle-fill me-2"></i>
+                        {% elif category == 'info' %}
+                            <i class="bi bi-info-circle-fill me-2"></i>
+                        {% endif %}
                         {{ message }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
@@ -356,6 +415,29 @@
     <!-- Footer -->
     <footer class="text-center py-4 mt-5">
         <div class="container">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <h5><i class="bi bi-basket2-fill text-success"></i> Fresh Marketplace</h5>
+                    <p class="text-muted small">Delivering fresh produce to your door since 2026</p>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <h5>Quick Links</h5>
+                    <ul class="list-unstyled">
+                        <li><a href="{{ url_for('index') }}" class="text-decoration-none text-muted">Home</a></li>
+                        <li><a href="{{ url_for('products') }}" class="text-decoration-none text-muted">Products</a></li>
+                        <li><a href="#" class="text-decoration-none text-muted">About Us</a></li>
+                        <li><a href="#" class="text-decoration-none text-muted">Contact</a></li>
+                    </ul>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <h5>Follow Us</h5>
+                    <a href="#" class="text-decoration-none text-muted me-3"><i class="bi bi-facebook fs-4"></i></a>
+                    <a href="#" class="text-decoration-none text-muted me-3"><i class="bi bi-twitter fs-4"></i></a>
+                    <a href="#" class="text-decoration-none text-muted me-3"><i class="bi bi-instagram fs-4"></i></a>
+                    <a href="#" class="text-decoration-none text-muted"><i class="bi bi-whatsapp fs-4"></i></a>
+                </div>
+            </div>
+            <hr class="my-3">
             <p class="text-muted small mb-0">
                 &copy; 2026 Fresh Marketplace. All rights reserved. 
                 <span class="mx-2">|</span> 
@@ -373,24 +455,68 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
     <script>
-        // Simple notification system
-        {% if session.user_id %}
+        // Notification system
+        let lastNotificationCheck = 0;
+        let notificationInterval;
+        
         function checkNotifications() {
             fetch('/api/notifications')
                 .then(response => response.json())
                 .then(data => {
-                    const badge = document.querySelector('.notification-badge');
-                    if (badge && data.unread_count > 0) {
-                        badge.textContent = data.unread_count;
-                        badge.style.display = 'inline';
+                    if (data.unread_count > lastNotificationCheck) {
+                        playNotificationSound();
+                        
+                        // Update badge
+                        const badge = document.querySelector('.notification-badge');
+                        if (badge) {
+                            badge.textContent = data.unread_count;
+                            badge.style.display = 'inline';
+                            badge.classList.add('notification-pulse');
+                            setTimeout(() => badge.classList.remove('notification-pulse'), 500);
+                        }
+                        
+                        // Show browser notification if permitted
+                        if (Notification.permission === 'granted' && data.latest_message) {
+                            new Notification('New Message from ' + (data.sender || 'Someone'), {
+                                body: data.latest_message,
+                                icon: '{{ url_for('static', filename='images/favicon.ico') }}'
+                            });
+                        }
                     }
+                    lastNotificationCheck = data.unread_count;
                 })
-                .catch(() => {});
+                .catch(error => console.log('Notification check failed:', error));
         }
         
-        // Check every 30 seconds
-        setInterval(checkNotifications, 30000);
+        function playNotificationSound() {
+            const sound = document.getElementById('notificationSound');
+            sound.play().catch(e => console.log('Sound playback failed:', e));
+        }
+        
+        // Request notification permission
+        if ('Notification' in window) {
+            Notification.requestPermission();
+        }
+        
+        // Start checking for notifications every 10 seconds if logged in
+        {% if session.user_id %}
+            notificationInterval = setInterval(checkNotifications, 10000);
         {% endif %}
+        
+        // Clean up interval on page unload
+        window.addEventListener('beforeunload', function() {
+            if (notificationInterval) {
+                clearInterval(notificationInterval);
+            }
+        });
+        
+        // Tooltip initialization
+        document.addEventListener('DOMContentLoaded', function() {
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function(tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        });
     </script>
     
     {% block scripts %}{% endblock %}
