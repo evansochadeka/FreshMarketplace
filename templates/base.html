@@ -294,9 +294,7 @@
                                 <li><hr class="dropdown-divider"></li>
                                 <li><a class="dropdown-item" href="{{ url_for('seller_inquiries') }}">
                                     <i class="bi bi-question-circle"></i> Inquiries
-                                    {% if stats and stats.pending_inquiries > 0 %}
-                                    <span class="badge bg-danger ms-2">{{ stats.pending_inquiries }}</span>
-                                    {% endif %}
+                                    <!-- FIXED: Removed stats.pending_inquiries reference -->
                                 </a></li>
                             </ul>
                         </li>
