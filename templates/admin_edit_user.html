@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Edit User - {{ user.username }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <nav class="col-md-2 d-md-block bg-light sidebar">
+            <div class="position-sticky pt-3">
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_dashboard') }}">
+                            <i class="bi bi-speedometer2"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="{{ url_for('admin_users') }}">
+                            <i class="bi bi-people"></i> Users
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_products') }}">
+                            <i class="bi bi-box"></i> Products
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </nav>
+
+        <!-- Main content -->
+        <main class="col-md-10 ms-sm-auto px-md-4">
+            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                <h1 class="h2">
+                    <i class="bi bi-pencil-square"></i> Edit User: {{ user.username }}
+                </h1>
+                <div class="btn-toolbar mb-2 mb-md-0">
+                    <a href="{{ url_for('admin_user_detail', user_id=user.id) }}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left"></i> Back to Details
+                    </a>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-8 mx-auto">
+                    <div class="card">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0"><i class="bi bi-person-gear"></i> Edit User Information</h5>
+                        </div>
+                        <div class="card-body">
+                            <form method="POST" enctype="multipart/form-data">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Username</label>
+                                        <input type="text" name="username" class="form-control" value="{{ user.username }}" required>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Email</label>
+                                        <input type="email" name="email" class="form-control" value="{{ user.email }}" required>
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Role</label>
+                                        <select name="role" class="form-select" required>
+                                            <option value="buyer" {% if user.role == 'buyer' %}selected{% endif %}>Buyer</option>
+                                            <option value="seller" {% if user.role == 'seller' %}selected{% endif %}>Seller</option>
+                                            <option value="rider" {% if user.role == 'rider' %}selected{% endif %}>Rider</option>
+                                            <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Phone Number</label>
+                                        <input type="text" name="phone_number" class="form-control" value="{{ user.phone_number }}" required>
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">WhatsApp Number</label>
+                                        <input type="text" name="whatsapp_number" class="form-control" value="{{ user.whatsapp_number or '' }}">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Location</label>
+                                        <input type="text" name="location" class="form-control" value="{{ user.location or '' }}">
+                                    </div>
+                                </div>
+
+                                <!-- Seller Specific Fields -->
+                                <div id="sellerFields" style="display: {{ 'block' if user.role == 'seller' else 'none' }};">
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Business Name</label>
+                                            <input type="text" name="business_name" class="form-control" value="{{ user.business_name or '' }}">
+                                        </div>
+                                        <div class="col-md-6 mb-3">
+                                            <label class="form-label">Business Address</label>
+                                            <input type="text" name="business_address" class="form-control" value="{{ user.business_address or '' }}">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">New Password (leave blank to keep current)</label>
+                                    <input type="password" name="new_password" class="form-control">
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Profile Image</label>
+                                    <input type="file" name="profile_image" class="form-control" accept="image/*">
+                                    <small class="text-muted">Leave blank to keep current image</small>
+                                    {% if user.profile_image and user.profile_image != '/static/images/default-profile.png' %}
+                                    <div class="mt-2">
+                                        <img src="{{ user.profile_image }}" width="50" height="50" class="rounded-circle">
+                                        <span class="ms-2">Current image</span>
+                                    </div>
+                                    {% endif %}
+                                </div>
+
+                                <hr>
+
+                                <div class="alert alert-info">
+                                    <i class="bi bi-info-circle"></i> 
+                                    <strong>Account created:</strong> {{ user.created_at.strftime('%Y-%m-%d %H:%M') }}
+                                    {% if user.last_seen %}
+                                    <br><strong>Last seen:</strong> {{ user.last_seen.strftime('%Y-%m-%d %H:%M') }}
+                                    {% endif %}
+                                </div>
+
+                                <div class="d-flex justify-content-end">
+                                    <a href="{{ url_for('admin_user_detail', user_id=user.id) }}" class="btn btn-secondary me-2">Cancel</a>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="bi bi-check-circle"></i> Save Changes
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<style>
+.sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 100;
+    padding: 48px 0 0;
+    box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
+    background-color: #f8f9fa;
+}
+.sidebar .nav-link {
+    font-weight: 500;
+    color: #333;
+    padding: 0.5rem 1rem;
+}
+.sidebar .nav-link.active {
+    color: #198754;
+    background-color: #e9ecef;
+}
+main {
+    padding-top: 1.5rem;
+}
+</style>
+
+<script>
+document.querySelector('select[name="role"]').addEventListener('change', function() {
+    const sellerFields = document.getElementById('sellerFields');
+    if (this.value === 'seller') {
+        sellerFields.style.display = 'block';
+    } else {
+        sellerFields.style.display = 'none';
+    }
+});
+</script>
+{% endblock %}

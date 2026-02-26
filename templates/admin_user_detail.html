@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+
+{% block title %}{{ user.username }} - User Details{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <nav class="col-md-2 d-md-block bg-light sidebar">
+            <div class="position-sticky pt-3">
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_dashboard') }}">
+                            <i class="bi bi-speedometer2"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="{{ url_for('admin_users') }}">
+                            <i class="bi bi-people"></i> Users
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_products') }}">
+                            <i class="bi bi-box"></i> Products
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </nav>
+
+        <!-- Main content -->
+        <main class="col-md-10 ms-sm-auto px-md-4">
+            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                <h1 class="h2">
+                    <i class="bi bi-person-circle"></i> User Details: {{ user.username }}
+                    {% if user.id == session.user_id %}
+                    <span class="badge bg-success ms-2">Current User</span>
+                    {% endif %}
+                </h1>
+                <div class="btn-toolbar mb-2 mb-md-0">
+                    <div class="btn-group me-2">
+                        <a href="{{ url_for('admin_edit_user', user_id=user.id) }}" class="btn btn-primary">
+                            <i class="bi bi-pencil"></i> Edit User
+                        </a>
+                        <a href="{{ url_for('impersonate_user', user_id=user.id) }}" class="btn btn-warning" onclick="return confirm('Login as {{ user.username }}?')">
+                            <i class="bi bi-person-badge"></i> Login as User
+                        </a>
+                        <a href="{{ url_for('admin_users') }}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> Back to Users
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <!-- User Profile Card -->
+                <div class="col-md-4 mb-4">
+                    <div class="card">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0"><i class="bi bi-person-badge"></i> Profile</h5>
+                        </div>
+                        <div class="card-body text-center">
+                            {% if user.profile_image %}
+                            <img src="{{ user.profile_image }}" class="rounded-circle mb-3" width="150" height="150" style="object-fit: cover;">
+                            {% else %}
+                            <i class="bi bi-person-circle display-1 mb-3"></i>
+                            {% endif %}
+                            
+                            <h4>{{ user.username }}</h4>
+                            <p class="text-muted">{{ user.email }}</p>
+                            
+                            <span class="badge bg-{{ 'danger' if user.role == 'admin' else 'success' if user.role == 'seller' else 'info' if user.role == 'rider' else 'secondary' }} fs-6 mb-3">
+                                {{ user.role|upper }}
+                            </span>
+                            
+                            <div class="mt-3">
+                                {% if user.is_online %}
+                                <span class="badge bg-success">Online Now</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Offline</span>
+                                {% endif %}
+                                <br>
+                                <small class="text-muted">Last seen: {{ user.last_seen.strftime('%Y-%m-%d %H:%M') if user.last_seen else 'Never' }}</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- User Information -->
+                <div class="col-md-8 mb-4">
+                    <div class="card">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0"><i class="bi bi-info-circle"></i> Information</h5>
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-borderless">
+                                <tr>
+                                    <th style="width: 150px;">User ID:</th>
+                                    <td>#{{ user.id }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Username:</th>
+                                    <td>{{ user.username }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Email:</th>
+                                    <td>{{ user.email }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Role:</th>
+                                    <td>
+                                        <span class="badge bg-{{ 'danger' if user.role == 'admin' else 'success' if user.role == 'seller' else 'info' if user.role == 'rider' else 'secondary' }}">
+                                            {{ user.role }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Phone Number:</th>
+                                    <td>
+                                        {{ user.phone_number }}
+                                        {% if user.whatsapp_number %}
+                                        <a href="https://wa.me/{{ user.whatsapp_number|replace('+', '')|replace(' ', '') }}" target="_blank" class="ms-2">
+                                            <i class="bi bi-whatsapp text-success"></i> WhatsApp
+                                        </a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>Location:</th>
+                                    <td>{{ user.location or 'Not set' }}</td>
+                                </tr>
+                                {% if user.role == 'seller' %}
+                                <tr>
+                                    <th>Business Name:</th>
+                                    <td>{{ user.business_name or 'Not set' }}</td>
+                                </tr>
+                                <tr>
+                                    <th>Business Address:</th>
+                                    <td>{{ user.business_address or 'Not set' }}</td>
+                                </tr>
+                                {% endif %}
+                                <tr>
+                                    <th>Account Created:</th>
+                                    <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User Statistics -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card bg-info text-white">
+                        <div class="card-body">
+                            <h5>Products</h5>
+                            <h3>{{ user.products|length if user.products else 0 }}</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body">
+                            <h5>Sales</h5>
+                            <h3>{{ user.sales|length if user.sales else 0 }}</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning text-dark">
+                        <div class="card-body">
+                            <h5>Orders</h5>
+                            <h3>{{ user.customer_orders|length if user.customer_orders else 0 }}</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body">
+                            <h5>Messages</h5>
+                            <h3>{{ user.sent_messages|length if user.sent_messages else 0 }}</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User's Products (if seller) -->
+            {% if user.role == 'seller' and user.products %}
+            <div class="card mb-4">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="bi bi-box"></i> Seller's Products</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Category</th>
+                                    <th>Price</th>
+                                    <th>Stock</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for product in user.products %}
+                                <tr>
+                                    <td>#{{ product.id }}</td>
+                                    <td>{{ product.name }}</td>
+                                    <td>{{ product.category }}</td>
+                                    <td>Kes {{ "%.2f"|format(product.price) }}</td>
+                                    <td>{{ product.stock }}</td>
+                                    <td>
+                                        {% if product.is_active %}
+                                        <span class="badge bg-success">Active</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">Inactive</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <a href="{{ url_for('product_detail', id=product.id) }}" class="btn btn-sm btn-info" target="_blank">
+                                            <i class="bi bi-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- User's Recent Orders -->
+            {% if user.customer_orders %}
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-truck"></i> Recent Orders</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Order #</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                    <th>Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for order in user.customer_orders[:5] %}
+                                <tr>
+                                    <td>#{{ order.id }}</td>
+                                    <td>Kes {{ "%.2f"|format(order.total) }}</td>
+                                    <td>
+                                        <span class="badge bg-{{ 'warning' if order.status == 'pending' else 'info' if order.status == 'in_transit' else 'success' }}">
+                                            {{ order.status }}
+                                        </span>
+                                    </td>
+                                    <td>{{ order.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>
+                                        <a href="{{ url_for('order_detail', id=order.id) }}" class="btn btn-sm btn-primary">
+                                            <i class="bi bi-eye"></i> View
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </main>
+    </div>
+</div>
+
+<style>
+.sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 100;
+    padding: 48px 0 0;
+    box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
+    background-color: #f8f9fa;
+}
+.sidebar .nav-link {
+    font-weight: 500;
+    color: #333;
+    padding: 0.5rem 1rem;
+}
+.sidebar .nav-link.active {
+    color: #198754;
+    background-color: #e9ecef;
+}
+main {
+    padding-top: 1.5rem;
+}
+.table th {
+    font-weight: 600;
+}
+</style>
+{% endblock %}
