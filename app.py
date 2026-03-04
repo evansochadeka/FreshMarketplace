@@ -607,13 +607,25 @@ def products():
 @app.route('/product/<int:id>')
 def product_detail(id):
     try:
-        product = Product.query.get_or_404(id)
+        product = Product.query.get(id)
+        if not product:
+            flash('Product not found.', 'danger')
+            return redirect(url_for('products'))
+        
+        if not product.is_active:
+            flash('This product is no longer available.', 'warning')
+            return redirect(url_for('products'))
+        
         seller = User.query.get(product.seller_id)
         related_products = Product.query.filter_by(category=product.category, is_active=True).filter(Product.id != product.id).limit(4).all()
-        return render_template('product_detail.html', product=product, seller=seller, related_products=related_products)
+        
+        return render_template('product_detail.html', 
+                             product=product, 
+                             seller=seller, 
+                             related_products=related_products)
     except Exception as e:
         logger.error(f"Product detail error: {e}")
-        flash('Product not found.', 'danger')
+        flash('Error loading product.', 'danger')
         return redirect(url_for('products'))
 
 # ===== PRODUCT INQUIRY ROUTES =====
@@ -715,29 +727,94 @@ def answer_inquiry(id):
     return redirect(url_for('seller_inquiries'))
 
 # ===== SELLER DASHBOARD =====
+
 @app.route('/seller/dashboard')
-@login_required
+@role_required('seller')
 def seller_dashboard():
-    if session.get('role') != 'seller' and session.get('role') != 'admin':
-        flash('Access denied.', 'danger')
-        return redirect(url_for('index'))
-    
-    seller = User.query.get(session['user_id'])
-    products = Product.query.filter_by(seller_id=seller.id, is_active=True).all()
-    
-    # Simple stats dictionary with only the keys your template needs
-    stats = {
-        'total_products': len(products),
-        'total_stock': sum(p.stock for p in products) if products else 0,
-        'low_stock_count': 0,  # Add if needed
-        'total_sales': 0,
-        'today_sales': 0
-    }
-    
-    return render_template('seller_dashboard.html', 
-                         seller=seller,
-                         products=products,
-                         stats=stats) 
+    try:
+        seller = User.query.get(session['user_id'])
+        
+        if not seller:
+            flash('Seller not found.', 'danger')
+            return redirect(url_for('index'))
+        
+        # Get seller's products
+        products = Product.query.filter_by(seller_id=seller.id, is_active=True).all()
+        
+        # Basic statistics
+        total_products = len(products)
+        total_stock = sum(p.stock for p in products) if products else 0
+        low_stock_count = sum(1 for p in products if p.stock <= p.low_stock_threshold) if products else 0
+        
+        # Get sales data
+        today = datetime.now().date()
+        today_sales = 0
+        total_sales = 0
+        try:
+            today_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.total_price), 0)).filter(
+                Sale.seller_id == seller.id,
+                db.func.date(Sale.sale_date) == today
+            ).scalar() or 0
+        except:
+            pass
+        
+        try:
+            total_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.total_price), 0)).filter(
+                Sale.seller_id == seller.id
+            ).scalar() or 0
+        except:
+            pass
+        
+        # Recent orders
+        recent_orders = []
+        try:
+            recent_orders = Order.query.filter_by(seller_id=seller.id).order_by(Order.created_at.desc()).limit(5).all()
+        except:
+            pass
+        
+        # Top products
+        top_products = []
+        try:
+            top_products = db.session.query(
+                Product, db.func.coalesce(db.func.sum(OrderItem.quantity), 0).label('total_sold')
+            ).outerjoin(OrderItem, OrderItem.product_id == Product.id).filter(
+                Product.seller_id == seller.id
+            ).group_by(Product.id).order_by(db.desc('total_sold')).limit(5).all()
+        except:
+            pass
+        
+        # Recent customers
+        recent_customers = []
+        try:
+            recent_customers = Customer.query.filter_by(seller_id=seller.id).order_by(Customer.last_visit.desc()).limit(5).all()
+        except:
+            recent_customers = []
+        
+        # Unread messages
+        unread_messages = 0
+        try:
+            unread_messages = Message.query.filter_by(receiver_id=seller.id, is_read=False).count()
+        except:
+            pass
+        
+        # Pending inquiries
+        pending_inquiries = 0
+        try:
+            pending_inquiries = ProductInquiry.query.filter_by(seller_id=seller.id, status='pending').count()
+        except:
+            pass
+        
+        stats = {
+            'total_products': total_products,
+            'total_stock': total_stock,
+            'low_stock_count': low_stock_count,
+            'total_sales': float(total_sales),
+            'today_sales': float(today_sales),
+            'unread_messages': unread_messages,
+            'pending_inquiries': pending_inquiries
+        }
+        
+        return render_template('seller_dashboard.html', 
                              seller=seller,
                              products=products,
                              stats=stats,
@@ -789,7 +866,7 @@ def add_product():
             low_stock_threshold = int(request.form.get('low_stock_threshold', 5))
             video_call_enabled = request.form.get('video_call_enabled') == 'on'
             
-            final_price, _, _ = calculate_price_with_fees(base_price)
+            final_price, rider_fee, platform_fee = calculate_price_with_fees(base_price)
             
             # Handle image upload
             image_url = '/static/images/default-product.png'
@@ -1300,7 +1377,11 @@ def cart():
 def add_to_cart(id):
     try:
         quantity = int(request.form.get('quantity', 1))
-        product = Product.query.get_or_404(id)
+        product = Product.query.get(id)
+        
+        if not product:
+            flash('Product not found.', 'danger')
+            return redirect(url_for('products'))
         
         if not product.is_active:
             flash('This product is no longer available.', 'warning')
@@ -1319,6 +1400,47 @@ def add_to_cart(id):
         flash('Error adding to cart.', 'danger')
     
     return redirect(url_for('products'))
+
+@app.route('/update_cart/<int:id>', methods=['POST'])
+@login_required
+def update_cart(id):
+    try:
+        quantity = int(request.form.get('quantity', 0))
+        cart = session.get('cart', {})
+        
+        if quantity <= 0:
+            if str(id) in cart:
+                del cart[str(id)]
+                flash('Item removed from cart.', 'success')
+        else:
+            product = Product.query.get(id)
+            if product and product.stock >= quantity:
+                cart[str(id)] = quantity
+                flash('Cart updated.', 'success')
+            else:
+                flash('Invalid quantity.', 'danger')
+        
+        session['cart'] = cart
+    except Exception as e:
+        logger.error(f"Update cart error: {e}")
+        flash('Error updating cart.', 'danger')
+    
+    return redirect(url_for('cart'))
+
+@app.route('/remove_from_cart/<int:id>', methods=['POST'])
+@login_required
+def remove_from_cart(id):
+    try:
+        cart = session.get('cart', {})
+        if str(id) in cart:
+            del cart[str(id)]
+            session['cart'] = cart
+            flash('Item removed from cart.', 'success')
+    except Exception as e:
+        logger.error(f"Remove from cart error: {e}")
+        flash('Error removing item.', 'danger')
+    
+    return redirect(url_for('cart'))
 
 @app.route('/checkout', methods=['GET', 'POST'])
 @login_required
@@ -1494,7 +1616,7 @@ def orders():
         flash('Error loading orders. Please try again.', 'danger')
         return redirect(url_for('index'))
 
-# ===== RIDER FEATURES =====
+# ===== RIDER DASHBOARD =====
 
 @app.route('/rider/dashboard')
 @role_required('rider')
@@ -1527,8 +1649,7 @@ def update_delivery_status(id):
             flash('Access denied.', 'danger')
             return redirect(url_for('rider_dashboard'))
         
-        status = request.form['status']
-        order.status = status
+        order.status = request.form['status']
         db.session.commit()
         
         flash('Delivery status updated!', 'success')
@@ -1560,6 +1681,111 @@ def accept_order(id):
         flash('Error accepting order.', 'danger')
     
     return redirect(url_for('rider_dashboard'))
+
+# ===== RIDER TRACKING =====
+
+@app.route('/rider/update-location', methods=['POST'])
+@login_required
+@role_required('rider')
+def update_rider_location():
+    try:
+        data = request.get_json()
+        rider_id = session['user_id']
+        lat = data.get('lat')
+        lng = data.get('lng')
+        accuracy = data.get('accuracy', 0)
+        order_id = data.get('order_id')
+        
+        rider = User.query.get(rider_id)
+        rider.latitude = lat
+        rider.longitude = lng
+        rider.last_seen = datetime.utcnow()
+        
+        try:
+            location = UserLocation(
+                user_id=rider_id,
+                latitude=lat,
+                longitude=lng,
+                accuracy=accuracy
+            )
+            db.session.add(location)
+        except:
+            pass
+        
+        if order_id:
+            try:
+                tracking = OrderTracking(
+                    order_id=order_id,
+                    rider_lat=lat,
+                    rider_lng=lng,
+                    status='in_transit',
+                    timestamp=datetime.utcnow()
+                )
+                db.session.add(tracking)
+                
+                socketio.emit(f'order_{order_id}_location', {
+                    'lat': lat,
+                    'lng': lng,
+                    'timestamp': datetime.utcnow().isoformat()
+                }, room=f'order_{order_id}')
+            except:
+                pass
+        
+        db.session.commit()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Update location error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/rider-location/<int:rider_id>')
+def get_rider_location(rider_id):
+    try:
+        rider = User.query.get_or_404(rider_id)
+        return jsonify({
+            'lat': rider.latitude,
+            'lng': rider.longitude,
+            'last_seen': rider.last_seen.isoformat() if rider.last_seen else None,
+            'is_online': rider.is_online
+        })
+    except Exception as e:
+        logger.error(f"Get rider location error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/order-tracking/<int:order_id>')
+@login_required
+def get_order_tracking(order_id):
+    try:
+        tracking = OrderTracking.query.filter_by(order_id=order_id).order_by(OrderTracking.timestamp).all()
+        
+        return jsonify([{
+            'lat': t.rider_lat,
+            'lng': t.rider_lng,
+            'status': t.status,
+            'message': t.message,
+            'timestamp': t.timestamp.isoformat()
+        } for t in tracking])
+    except Exception as e:
+        logger.error(f"Order tracking error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/rider/track/<int:order_id>')
+@login_required
+def track_order(order_id):
+    try:
+        order = Order.query.get_or_404(order_id)
+        user = User.query.get(session['user_id'])
+        
+        if user.role != 'admin' and order.user_id != user.id and order.rider_id != user.id:
+            flash('Access denied.', 'danger')
+            return redirect(url_for('index'))
+        
+        return render_template('track_order.html', order=order)
+    except Exception as e:
+        logger.error(f"Track order error: {e}")
+        flash('Error loading tracking.', 'danger')
+        return redirect(url_for('orders'))
 
 # ===== CHAT ROUTES =====
 
@@ -1839,7 +2065,11 @@ def ai_assistant():
                 
                 context = f"The user is a {user.role} named {user.username}. "
                 if recent_orders:
-                    context += f"They have {len(recent_orders)} recent orders. "
+                    order_list = []
+                    for order in recent_orders:
+                        items = [f"{item.quantity}x {item.product.name}" for item in order.items]
+                        order_list.append(f"Order #{order.id}: {', '.join(items)}")
+                    context += f"They recently ordered: {'; '.join(order_list)}. "
                 
                 product_count = Product.query.filter_by(is_active=True).count()
                 seller_count = User.query.filter_by(role='seller').count()
@@ -2224,110 +2454,63 @@ def end_video_call(call_id):
         logger.error(f"End video call error: {e}")
         return jsonify({'error': str(e)}), 500
 
-# ===== RIDER TRACKING =====
-
-@app.route('/rider/update-location', methods=['POST'])
+@app.route('/video-call/<int:call_id>/ai-toggle', methods=['POST'])
 @login_required
-@role_required('rider')
-def update_rider_location():
+def toggle_video_call_ai(call_id):
     try:
+        call = VideoCall.query.get_or_404(call_id)
+        
+        if call.initiator_id != session['user_id'] and call.receiver_id != session['user_id']:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
         data = request.get_json()
-        rider_id = session['user_id']
-        lat = data.get('lat')
-        lng = data.get('lng')
-        accuracy = data.get('accuracy', 0)
-        order_id = data.get('order_id')
-        
-        rider = User.query.get(rider_id)
-        rider.latitude = lat
-        rider.longitude = lng
-        rider.last_seen = datetime.utcnow()
-        
-        try:
-            location = UserLocation(
-                user_id=rider_id,
-                latitude=lat,
-                longitude=lng,
-                accuracy=accuracy
-            )
-            db.session.add(location)
-        except:
-            pass
-        
-        if order_id:
-            try:
-                tracking = OrderTracking(
-                    order_id=order_id,
-                    rider_lat=lat,
-                    rider_lng=lng,
-                    status='in_transit',
-                    timestamp=datetime.utcnow()
-                )
-                db.session.add(tracking)
-                
-                socketio.emit(f'order_{order_id}_location', {
-                    'lat': lat,
-                    'lng': lng,
-                    'timestamp': datetime.utcnow().isoformat()
-                }, room=f'order_{order_id}')
-            except:
-                pass
-        
+        call.ai_assistant_active = data.get('active', not call.ai_assistant_active)
         db.session.commit()
+        
+        socketio.emit('ai_toggled', {
+            'call_id': call_id,
+            'active': call.ai_assistant_active
+        }, room=f'call_{call_id}')
+        
+        return jsonify({'success': True, 'active': call.ai_assistant_active})
+    except Exception as e:
+        logger.error(f"Toggle AI error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/video-call/<int:call_id>/message', methods=['POST'])
+@login_required
+def send_video_call_message(call_id):
+    try:
+        call = VideoCall.query.get_or_404(call_id)
+        
+        if call.initiator_id != session['user_id'] and call.receiver_id != session['user_id']:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        data = request.get_json()
+        message = data.get('message')
+        is_ai = data.get('is_ai', False)
+        
+        call_message = VideoCallMessage(
+            call_id=call_id,
+            sender_id=session['user_id'],
+            message=message,
+            is_ai=is_ai
+        )
+        db.session.add(call_message)
+        db.session.commit()
+        
+        socketio.emit('call_message', {
+            'call_id': call_id,
+            'message': message,
+            'sender': session['username'] if not is_ai else 'AI Assistant',
+            'is_ai': is_ai,
+            'timestamp': datetime.utcnow().isoformat()
+        }, room=f'call_{call_id}')
         
         return jsonify({'success': True})
     except Exception as e:
-        db.session.rollback()
-        logger.error(f"Update location error: {e}")
+        logger.error(f"Send video call message error: {e}")
         return jsonify({'error': str(e)}), 500
-
-@app.route('/api/rider-location/<int:rider_id>')
-def get_rider_location(rider_id):
-    try:
-        rider = User.query.get_or_404(rider_id)
-        return jsonify({
-            'lat': rider.latitude,
-            'lng': rider.longitude,
-            'last_seen': rider.last_seen.isoformat() if rider.last_seen else None,
-            'is_online': rider.is_online
-        })
-    except Exception as e:
-        logger.error(f"Get rider location error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/order-tracking/<int:order_id>')
-@login_required
-def get_order_tracking(order_id):
-    try:
-        tracking = OrderTracking.query.filter_by(order_id=order_id).order_by(OrderTracking.timestamp).all()
-        
-        return jsonify([{
-            'lat': t.rider_lat,
-            'lng': t.rider_lng,
-            'status': t.status,
-            'message': t.message,
-            'timestamp': t.timestamp.isoformat()
-        } for t in tracking])
-    except Exception as e:
-        logger.error(f"Order tracking error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/rider/track/<int:order_id>')
-@login_required
-def track_order(order_id):
-    try:
-        order = Order.query.get_or_404(order_id)
-        user = User.query.get(session['user_id'])
-        
-        if user.role != 'admin' and order.user_id != user.id and order.rider_id != user.id:
-            flash('Access denied.', 'danger')
-            return redirect(url_for('index'))
-        
-        return render_template('track_order.html', order=order)
-    except Exception as e:
-        logger.error(f"Track order error: {e}")
-        flash('Error loading tracking.', 'danger')
-        return redirect(url_for('orders'))
 
 # ===== SOCKETIO EVENTS =====
 
