@@ -5,7 +5,7 @@
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-6">
-        <div class="card">
+        <div class="card shadow">
             <div class="card-header bg-success text-white">
                 <h4 class="mb-0"><i class="bi bi-box-arrow-in-right"></i> Login</h4>
             </div>
@@ -20,8 +20,8 @@
                         <input type="password" name="password" class="form-control" required>
                     </div>
                     <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="rememberMe">
-                        <label class="form-check-label" for="rememberMe">Remember me</label>
+                        <input type="checkbox" class="form-check-input" id="remember" name="remember">
+                        <label class="form-check-label" for="remember">Remember me</label>
                     </div>
                     <button type="submit" class="btn btn-success w-100">
                         <i class="bi bi-box-arrow-in-right"></i> Login
@@ -34,11 +34,13 @@
                 
                 <hr>
                 
-                <div class="alert alert-info mt-3">
+                <div class="alert alert-info">
                     <strong>Demo Accounts:</strong><br>
-                    Admin: username=<code>admin</code>, password=<code>admin123</code><br>
-                    Rider: username=<code>rider1</code>, password=<code>rider123</code><br>
-                    This site is still under development by Benedict
+                    Admin: <code>admin</code> / <code>admin123</code><br>
+                    Seller: <code>seller1</code> / <code>seller123</code><br>
+                    Rider: <code>rider1</code> / <code>rider123</code><br>
+                    Buyer: <code>buyer1</code> / <code>buyer123</code><br>
+                    Super Admin: <code>benedict431</code> / <code>28734495</code>
                 </div>
             </div>
         </div>
