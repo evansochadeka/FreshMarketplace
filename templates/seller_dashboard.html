@@ -20,8 +20,36 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('add_product') }}">
-                            <i class="bi bi-plus-circle"></i> Add Product
+                        <a class="nav-link" href="{{ url_for('seller_inventory') }}">
+                            <i class="bi bi-clipboard-data"></i> Inventory
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('seller_orders') }}">
+                            <i class="bi bi-truck"></i> Orders
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('seller_inquiries') }}">
+                            <i class="bi bi-question-circle"></i> Inquiries
+                            {% if stats.pending_inquiries > 0 %}
+                            <span class="badge bg-danger">{{ stats.pending_inquiries }}</span>
+                            {% endif %}
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('customer_list') }}">
+                            <i class="bi bi-people"></i> Customers
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('sales_report') }}">
+                            <i class="bi bi-graph-up"></i> Sales Reports
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('pos_dashboard') }}">
+                            <i class="bi bi-calculator"></i> POS System
                         </a>
                     </li>
                 </ul>
@@ -34,7 +62,7 @@
                 <h1 class="h2">Seller Dashboard</h1>
                 <div class="btn-toolbar mb-2 mb-md-0">
                     <a href="{{ url_for('add_product') }}" class="btn btn-sm btn-success">
-                        <i class="bi bi-plus-circle"></i> Add New Product
+                        <i class="bi bi-plus-circle"></i> Add Product
                     </a>
                 </div>
             </div>
@@ -42,115 +70,27 @@
             <!-- Welcome Section -->
             <div class="alert alert-success">
                 <i class="bi bi-person-circle"></i> Welcome back, <strong>{{ seller.business_name or seller.username }}</strong>!
+                {% if stats.unread_notifications > 0 %}
+                <span class="ms-3">
+                    <i class="bi bi-bell"></i> You have <strong>{{ stats.unread_notifications }}</strong> unread notifications.
+                    <a href="{{ url_for('notifications') }}" class="alert-link">View</a>
+                </span>
+                {% endif %}
             </div>
 
             <!-- Statistics Cards -->
             <div class="row mb-4">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="card bg-primary text-white">
                         <div class="card-body">
-                            <h5>Total Products</h5>
+                            <h5>Products</h5>
                             <h3>{{ stats.total_products }}</h3>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <div class="card bg-success text-white">
                         <div class="card-body">
-                            <h5>Total Stock</h5>
-                            <h3>{{ stats.total_stock }}</h3>
+                            <h5>Total Sales</h5>
+                            <h3>Kes {{ "%.2f"|format(stats.total_sales) }}</h3>
                         </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card bg-info text-white">
-                        <div class="card-body">
-                            <h5>Products</h5>
-                            <h3>{{ products|length }}</h3>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Products List -->
-            <div class="card">
-                <div class="card-header bg-success text-white">
-                    <h5 class="mb-0"><i class="bi bi-box"></i> Your Products</h5>
-                </div>
-                <div class="card-body">
-                    {% if products %}
-                    <div class="table-responsive">
-                        <table class="table table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Image</th>
-                                    <th>Name</th>
-                                    <th>Category</th>
-                                    <th>Price</th>
-                                    <th>Stock</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for product in products %}
-                                <tr>
-                                    <td>
-                                        <img src="{{ product.image_url }}" width="50" height="50" style="object-fit: cover;" class="rounded">
-                                    </td>
-                                    <td>{{ product.name }}</td>
-                                    <td>{{ product.category }}</td>
-                                    <td>Kes {{ "%.2f"|format(product.price) }}</td>
-                                    <td>{{ product.stock }}</td>
-                                    <td>
-                                        <a href="{{ url_for('edit_product', id=product.id) }}" class="btn btn-sm btn-primary">
-                                            <i class="bi bi-pencil"></i>
-                                        </a>
-                                        <a href="{{ url_for('delete_product', id=product.id) }}" class="btn btn-sm btn-danger" 
-                                           onclick="return confirm('Delete this product?')">
-                                            <i class="bi bi-trash"></i>
-                                        </a>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <p class="text-center py-3">You haven't added any products yet.</p>
-                    <div class="text-center">
-                        <a href="{{ url_for('add_product') }}" class="btn btn-success">
-                            <i class="bi bi-plus-circle"></i> Add Your First Product
-                        </a>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </main>
-    </div>
-</div>
-
-<style>
-.sidebar {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    z-index: 100;
-    padding: 48px 0 0;
-    box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
-    background-color: #f8f9fa;
-}
-.sidebar .nav-link {
-    font-weight: 500;
-    color: #333;
-    padding: 0.5rem 1rem;
-}
-.sidebar .nav-link.active {
-    color: #198754;
-    background-color: #e9ecef;
-}
-main {
-    padding-top: 1.5rem;
-}
-</style>
-{% endblock %}
