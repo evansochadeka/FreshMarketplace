@@ -200,7 +200,6 @@ class Customer(db.Model):
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    # FIXED: Explicit foreign keys in relationships
     seller = db.relationship('User', foreign_keys=[seller_id], back_populates='customers_as_seller')
     user = db.relationship('User', foreign_keys=[user_id], back_populates='customers_as_user')
     purchases = db.relationship('Sale', back_populates='customer', lazy=True)
@@ -210,6 +209,8 @@ class Notification(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     order_id = db.Column(db.Integer, db.ForeignKey('order.id'))
+    inquiry_id = db.Column(db.Integer, db.ForeignKey('product_inquiry.id'))
+    recommendation_id = db.Column(db.Integer, db.ForeignKey('rider_recommendation.id'))
     title = db.Column(db.String(200), nullable=False)
     message = db.Column(db.Text, nullable=False)
     type = db.Column(db.String(50), default='info')
@@ -218,6 +219,8 @@ class Notification(db.Model):
     
     user = db.relationship('User', back_populates='notifications')
     order = db.relationship('Order', back_populates='notifications')
+    inquiry = db.relationship('ProductInquiry', back_populates='notifications')
+    recommendation = db.relationship('RiderRecommendation', back_populates='notifications')
 
 class Review(db.Model):
     __tablename__ = 'review'
@@ -357,7 +360,7 @@ class ProductInquiry(db.Model):
     product = db.relationship('Product', back_populates='inquiries')
     buyer = db.relationship('User', foreign_keys=[buyer_id], back_populates='product_inquiries_as_buyer')
     seller = db.relationship('User', foreign_keys=[seller_id], back_populates='product_inquiries_as_seller')
-    notifications = db.relationship('Notification', backref='inquiry', lazy=True)
+    notifications = db.relationship('Notification', back_populates='inquiry', lazy=True)
 
 class RiderRecommendation(db.Model):
     __tablename__ = 'rider_recommendation'
@@ -373,6 +376,7 @@ class RiderRecommendation(db.Model):
     buyer = db.relationship('User', foreign_keys=[buyer_id], back_populates='rider_recommendations_as_buyer')
     seller = db.relationship('User', foreign_keys=[seller_id], back_populates='rider_recommendations_as_seller')
     recommended_rider = db.relationship('User', foreign_keys=[recommended_rider_id])
+    notifications = db.relationship('Notification', back_populates='recommendation', lazy=True)
 
 class OfflineSale(db.Model):
     __tablename__ = 'offline_sale'
@@ -469,14 +473,16 @@ def generate_order_number():
     random_part = uuid.uuid4().hex[:6].upper()
     return f"ORD-{date_part}-{random_part}"
 
-def create_notification(user_id, title, message, type='info', order_id=None):
+def create_notification(user_id, title, message, type='info', order_id=None, inquiry_id=None, recommendation_id=None):
     try:
         notification = Notification(
             user_id=user_id,
             title=title,
             message=message,
             type=type,
-            order_id=order_id
+            order_id=order_id,
+            inquiry_id=inquiry_id,
+            recommendation_id=recommendation_id
         )
         db.session.add(notification)
         db.session.commit()
@@ -487,6 +493,8 @@ def create_notification(user_id, title, message, type='info', order_id=None):
             'message': message,
             'type': type,
             'order_id': order_id,
+            'inquiry_id': inquiry_id,
+            'recommendation_id': recommendation_id,
             'created_at': notification.created_at.isoformat()
         }, room=f'user_{user_id}')
         
@@ -719,11 +727,19 @@ def product_detail(id):
         if 'user_id' in session:
             product_inquiries = ProductInquiry.query.filter_by(product_id=id, buyer_id=session['user_id']).all()
         
+        # Get available riders for recommendation
+        available_riders = []
+        try:
+            available_riders = User.query.filter_by(role='rider', is_online=True).limit(5).all()
+        except:
+            available_riders = []
+        
         return render_template('product_detail.html', 
                              product=product, 
                              seller=seller, 
                              related_products=related_products,
-                             product_inquiries=product_inquiries)
+                             product_inquiries=product_inquiries,
+                             available_riders=available_riders)
     except Exception as e:
         logger.error(f"Product detail error: {e}")
         flash('Error loading product. Please try again.', 'danger')
@@ -750,7 +766,7 @@ def product_inquiry(id):
     
     try:
         db.session.add(inquiry)
-        db.session.commit()
+        db.session.flush()
         
         # Create notification for seller
         buyer = User.query.get(session['user_id'])
@@ -758,8 +774,11 @@ def product_inquiry(id):
             user_id=product.seller_id,
             title=f"New Question about {product.name}",
             message=f"{buyer.username} asked: {question[:100]}...",
-            type='inquiry'
+            type='inquiry',
+            inquiry_id=inquiry.id
         )
+        
+        db.session.commit()
         
         flash('Your question has been sent to the seller!', 'success')
     except Exception as e:
@@ -794,7 +813,7 @@ def recommend_rider(id):
     
     try:
         db.session.add(recommendation)
-        db.session.commit()
+        db.session.flush()
         
         # Create notification for seller
         buyer = User.query.get(session['user_id'])
@@ -802,8 +821,11 @@ def recommend_rider(id):
             user_id=product.seller_id,
             title=f"Rider Recommendation for {product.name}",
             message=f"{buyer.username} recommended rider {rider.username}",
-            type='recommendation'
+            type='recommendation',
+            recommendation_id=recommendation.id
         )
+        
+        db.session.commit()
         
         flash(f'Rider {rider.username} recommended to seller!', 'success')
     except Exception as e:
@@ -846,7 +868,8 @@ def answer_inquiry(id):
             user_id=inquiry.buyer_id,
             title=f"Your Question about {inquiry.product.name} has been Answered",
             message=f"Seller replied: {answer[:100]}...",
-            type='inquiry'
+            type='inquiry',
+            inquiry_id=inquiry.id
         )
         
         flash('Answer sent to buyer!', 'success')
