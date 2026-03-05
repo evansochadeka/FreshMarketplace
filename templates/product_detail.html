@@ -5,7 +5,7 @@
 {% block content %}
 <div class="row">
     <div class="col-md-6">
-        <!-- Product Image Gallery -->
+        <!-- Main Product Image -->
         <div id="productCarousel" class="carousel slide mb-3" data-bs-ride="carousel">
             <div class="carousel-inner rounded-3 shadow">
                 <div class="carousel-item active">
@@ -47,7 +47,7 @@
     </div>
     
     <div class="col-md-6">
-        <!-- Product Info -->
+        <!-- Breadcrumb -->
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
                 <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Home</a></li>
@@ -56,6 +56,7 @@
             </ol>
         </nav>
 
+        <!-- Product Title and Badges -->
         <div class="d-flex align-items-center mb-2">
             <h1 class="mb-0">{{ product.name }}</h1>
             <span class="badge bg-success ms-2">{{ product.category }}</span>
@@ -66,42 +67,43 @@
             {% endif %}
         </div>
         
-        <!-- Seller Info with Interaction Buttons -->
+        <!-- Seller Info -->
+        {% if seller %}
         <div class="d-flex align-items-center mb-3 p-3 bg-light rounded-3">
             <div class="d-flex align-items-center">
-                {% if seller and seller.profile_image %}
+                {% if seller.profile_image %}
                 <img src="{{ seller.profile_image }}" class="rounded-circle me-2" width="50" height="50" style="object-fit: cover;">
                 {% else %}
                 <i class="bi bi-person-circle fs-1 me-2"></i>
                 {% endif %}
                 <div>
-                    <h6 class="mb-0">{{ seller.business_name or seller.username if seller else 'Unknown Seller' }}</h6>
+                    <h6 class="mb-0">{{ seller.business_name or seller.username }}</h6>
                     <small class="text-muted">
                         <i class="bi bi-star-fill text-warning"></i> 4.5 
                         <i class="bi bi-chat ms-2"></i> 98% positive
                     </small>
                 </div>
             </div>
-            {% if session.user_id and session.user_id != (seller.id if seller else None) %}
+            {% if session.user_id and session.user_id != seller.id %}
             <div class="ms-auto">
                 <div class="btn-group">
-                    <a href="{{ url_for('chat_with_user', receiver_id=seller.id, product_id=product.id) if seller else '#' }}" 
+                    <a href="{{ url_for('chat_with_user', receiver_id=seller.id, product_id=product.id) }}" 
                        class="btn btn-sm btn-outline-success" title="Chat with Seller">
                         <i class="bi bi-chat-dots"></i>
                     </a>
-                    {% if seller and seller.phone_number %}
+                    {% if seller.phone_number %}
                     <a href="tel:{{ seller.phone_number }}" class="btn btn-sm btn-outline-primary" title="Call Seller">
                         <i class="bi bi-telephone"></i>
                     </a>
                     {% endif %}
-                    {% if seller and seller.whatsapp_number %}
+                    {% if seller.whatsapp_number %}
                     <a href="https://wa.me/{{ seller.whatsapp_number|replace('+', '')|replace(' ', '') }}?text=Hello%20{{ seller.username|urlencode }}%2C%20I'm%20interested%20in%20{{ product.name|urlencode }}" 
                        target="_blank" 
                        class="btn btn-sm btn-outline-success" title="WhatsApp Seller">
                         <i class="bi bi-whatsapp"></i>
                     </a>
                     {% endif %}
-                    {% if product.video_call_enabled and seller and seller.is_online %}
+                    {% if product.video_call_enabled and seller.is_online %}
                     <button class="btn btn-sm btn-outline-info" onclick="initiateVideoCall()" title="Video Call">
                         <i class="bi bi-camera-video"></i>
                     </button>
@@ -110,8 +112,9 @@
             </div>
             {% endif %}
         </div>
+        {% endif %}
         
-        <!-- Price Breakdown -->
+        <!-- Price -->
         <div class="mb-3">
             <h2 class="text-success">Kes {{ "%.2f"|format(product.price) }}</h2>
             <small class="text-muted">
@@ -123,15 +126,17 @@
         
         <!-- Stock Status -->
         <div class="mb-3">
-            {% if product.stock > 10 %}
-            <span class="badge bg-success">In Stock ({{ product.stock }} available)</span>
-            {% elif product.stock > 0 %}
-            <span class="badge bg-warning">Low Stock ({{ product.stock }} left)</span>
+            {% set available = product.stock - product.reserved_stock %}
+            {% if available > 10 %}
+            <span class="badge bg-success">In Stock ({{ available }} available)</span>
+            {% elif available > 0 %}
+            <span class="badge bg-warning">Low Stock ({{ available }} left)</span>
             {% else %}
             <span class="badge bg-danger">Out of Stock</span>
             {% endif %}
         </div>
         
+        <!-- Description -->
         <p class="lead">{{ product.description }}</p>
         
         <!-- Product Details -->
@@ -144,20 +149,18 @@
             </div>
             <div class="col-md-6">
                 <p class="mb-1"><strong>Added:</strong> {{ product.created_at.strftime('%Y-%m-%d') if product.created_at else 'N/A' }}</p>
-                {% if product.updated_at %}
-                <p class="mb-1"><strong>Updated:</strong> {{ product.updated_at.strftime('%Y-%m-%d') }}</p>
-                {% endif %}
             </div>
         </div>
         
-        <!-- Add to Cart / Inquiry Section -->
+        <!-- Add to Cart -->
         {% if session.user_id %}
-            {% if product.stock > 0 %}
+            {% set available = product.stock - product.reserved_stock %}
+            {% if available > 0 %}
             <form method="POST" action="{{ url_for('add_to_cart', id=product.id) }}" class="mb-3">
                 <div class="row g-2">
                     <div class="col-md-4">
                         <label class="form-label">Quantity:</label>
-                        <input type="number" name="quantity" class="form-control" value="1" min="1" max="{{ product.stock }}">
+                        <input type="number" name="quantity" class="form-control" value="1" min="1" max="{{ available }}">
                     </div>
                     <div class="col-md-8 d-flex align-items-end">
                         <button type="submit" class="btn btn-success btn-lg w-100">
@@ -186,7 +189,7 @@
                 </div>
             </div>
             
-            <!-- Inquiry Form (Hidden by default) -->
+            <!-- Inquiry Form -->
             <div id="inquiryForm" class="card mb-3" style="display: none;">
                 <div class="card-header bg-info text-white">
                     <h6 class="mb-0"><i class="bi bi-question-circle"></i> Ask a Question</h6>
@@ -206,7 +209,7 @@
                 </div>
             </div>
             
-            <!-- Rider Recommendation Form (Hidden by default) -->
+            <!-- Rider Recommendation Form -->
             <div id="riderForm" class="card mb-3" style="display: none;">
                 <div class="card-header bg-success text-white">
                     <h6 class="mb-0"><i class="bi bi-person-check"></i> Recommend a Rider</h6>
@@ -278,11 +281,8 @@
         </a>
         {% endif %}
         
-        <!-- Share and Actions -->
-        <div class="d-flex justify-content-between mt-3">
-            <button class="btn btn-outline-secondary btn-sm" onclick="window.print()">
-                <i class="bi bi-printer"></i> Print
-            </button>
+        <!-- Share Button -->
+        <div class="d-flex justify-content-end mt-3">
             <button class="btn btn-outline-secondary btn-sm" onclick="shareProduct()">
                 <i class="bi bi-share"></i> Share
             </button>
@@ -290,7 +290,7 @@
     </div>
 </div>
 
-<!-- Related Products Section -->
+<!-- Related Products -->
 {% if related_products and related_products|length > 0 %}
 <div class="row mt-5">
     <div class="col-12">
