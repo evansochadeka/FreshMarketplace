@@ -1,93 +1,67 @@
 {% extends "base.html" %}
 
-{% block content %}
-<!-- Floating Chat and AI Icons -->
-<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1000; right: 20px; bottom: 20px;">
-    <!-- AI Assistant Icon -->
-    <div class="mb-2 text-end">
-        <a href="{{ url_for('ai_assistant') }}" class="btn btn-success rounded-circle p-3 shadow-lg" style="width: 60px; height: 60px;" title="AI Assistant">
-            <i class="bi bi-robot fs-3"></i>
-        </a>
-    </div>
-    <!-- Live Chat Icon -->
-    <div class="text-end">
-        <button class="btn btn-primary rounded-circle p-3 shadow-lg" style="width: 60px; height: 60px;" onclick="openLiveChat()" title="Live Chat">
-            <i class="bi bi-chat-dots fs-3"></i>
-        </button>
-    </div>
-</div>
+{% block title %}Fresh Marketplace - Home{% endblock %}
 
-<!-- Hero Carousel with Beautiful Grocery Images -->
+{% block content %}
+<!-- Hero Carousel -->
 <div class="hero-section position-relative mb-5">
     <div id="groceryCarousel" class="carousel slide" data-bs-ride="carousel">
         <div class="carousel-indicators">
-            <button type="button" data-bs-target="#groceryCarousel" data-bs-slide-to="0" class="active" aria-current="true" aria-label="Slide 1"></button>
-            <button type="button" data-bs-target="#groceryCarousel" data-bs-slide-to="1" aria-label="Slide 2"></button>
-            <button type="button" data-bs-target="#groceryCarousel" data-bs-slide-to="2" aria-label="Slide 3"></button>
-            <button type="button" data-bs-target="#groceryCarousel" data-bs-slide-to="3" aria-label="Slide 4"></button>
+            <button type="button" data-bs-target="#groceryCarousel" data-bs-slide-to="0" class="active"></button>
+            <button type="button" data-bs-target="#groceryCarousel" data-bs-slide-to="1"></button>
+            <button type="button" data-bs-target="#groceryCarousel" data-bs-slide-to="2"></button>
         </div>
-        <div class="carousel-inner rounded-4 shadow-lg">
+        <div class="carousel-inner rounded-4 shadow">
             <div class="carousel-item active">
                 <img src="https://images.unsplash.com/photo-1542838132-92c53300491e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" 
                      class="d-block w-100" style="height: 500px; object-fit: cover;" alt="Fresh Vegetables">
                 <div class="carousel-caption d-none d-md-block bg-dark bg-opacity-50 rounded-3 p-4">
-                    <h2 class="display-4 fw-bold">Fresh Vegetables</h2>
+                    <h2 class="display-4">Fresh Vegetables</h2>
                     <p class="lead">Farm-fresh vegetables delivered to your doorstep</p>
-                    <a href="{{ url_for('products') }}?category=Vegetables" class="btn btn-success btn-lg mt-2">Shop Now</a>
+                    <a href="{{ url_for('products') }}?category=Vegetables" class="btn btn-success btn-lg">Shop Now</a>
                 </div>
             </div>
             <div class="carousel-item">
                 <img src="https://images.unsplash.com/photo-1610832958506-aa56368176cf?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" 
                      class="d-block w-100" style="height: 500px; object-fit: cover;" alt="Fresh Fruits">
                 <div class="carousel-caption d-none d-md-block bg-dark bg-opacity-50 rounded-3 p-4">
-                    <h2 class="display-4 fw-bold">Juicy Fruits</h2>
+                    <h2 class="display-4">Juicy Fruits</h2>
                     <p class="lead">Sweet and fresh fruits from local farmers</p>
-                    <a href="{{ url_for('products') }}?category=Fruits" class="btn btn-success btn-lg mt-2">Shop Now</a>
+                    <a href="{{ url_for('products') }}?category=Fruits" class="btn btn-success btn-lg">Shop Now</a>
                 </div>
             </div>
             <div class="carousel-item">
                 <img src="https://images.unsplash.com/photo-1550989460-0adf9ea622e2?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" 
                      class="d-block w-100" style="height: 500px; object-fit: cover;" alt="Organic Produce">
                 <div class="carousel-caption d-none d-md-block bg-dark bg-opacity-50 rounded-3 p-4">
-                    <h2 class="display-4 fw-bold">Organic Produce</h2>
+                    <h2 class="display-4">Organic Produce</h2>
                     <p class="lead">100% organic and chemical-free</p>
-                    <a href="{{ url_for('products') }}" class="btn btn-success btn-lg mt-2">Shop All</a>
-                </div>
-            </div>
-            <div class="carousel-item">
-                <img src="https://images.unsplash.com/photo-1528823872057-9c018a7a7553?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80" 
-                     class="d-block w-100" style="height: 500px; object-fit: cover;" alt="Fresh Herbs">
-                <div class="carousel-caption d-none d-md-block bg-dark bg-opacity-50 rounded-3 p-4">
-                    <h2 class="display-4 fw-bold">Fresh Herbs</h2>
-                    <p class="lead">Aromatic herbs for your kitchen</p>
-                    <a href="{{ url_for('products') }}" class="btn btn-success btn-lg mt-2">Shop Now</a>
+                    <a href="{{ url_for('products') }}" class="btn btn-success btn-lg">Shop All</a>
                 </div>
             </div>
         </div>
         <button class="carousel-control-prev" type="button" data-bs-target="#groceryCarousel" data-bs-slide="prev">
-            <span class="carousel-control-prev-icon" aria-hidden="true"></span>
-            <span class="visually-hidden">Previous</span>
+            <span class="carousel-control-prev-icon"></span>
         </button>
         <button class="carousel-control-next" type="button" data-bs-target="#groceryCarousel" data-bs-slide="next">
-            <span class="carousel-control-next-icon" aria-hidden="true"></span>
-            <span class="visually-hidden">Next</span>
+            <span class="carousel-control-next-icon"></span>
         </button>
     </div>
 </div>
 
-<!-- Categories Section with Beautiful Images -->
+<!-- Categories -->
 <div class="row mb-5">
     <div class="col-12 text-center mb-4">
-        <h2 class="display-6 fw-bold">Shop by Category</h2>
+        <h2 class="display-6">Shop by Category</h2>
         <p class="text-muted">Browse our wide selection of fresh products</p>
     </div>
     <div class="col-md-3 mb-3">
         <a href="{{ url_for('products') }}?category=Fruits" class="text-decoration-none">
             <div class="card category-card text-center border-0 shadow-sm h-100">
                 <img src="https://images.unsplash.com/photo-1619566636858-adf3ef46400b?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80" 
-                     class="card-img-top rounded-circle mx-auto mt-4" style="width: 150px; height: 150px; object-fit: cover; border: 3px solid #198754;" alt="Fruits">
+                     class="card-img-top rounded-circle mx-auto mt-4" style="width: 150px; height: 150px; object-fit: cover; border: 3px solid #198754;">
                 <div class="card-body">
-                    <h5 class="card-title text-success fw-bold">Fruits</h5>
+                    <h5 class="card-title text-success">Fruits</h5>
                     <p class="card-text text-muted">Fresh & Juicy</p>
                 </div>
             </div>
@@ -97,9 +71,9 @@
         <a href="{{ url_for('products') }}?category=Vegetables" class="text-decoration-none">
             <div class="card category-card text-center border-0 shadow-sm h-100">
                 <img src="https://images.unsplash.com/photo-1597362921503-ee2145d5753c?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80" 
-                     class="card-img-top rounded-circle mx-auto mt-4" style="width: 150px; height: 150px; object-fit: cover; border: 3px solid #198754;" alt="Vegetables">
+                     class="card-img-top rounded-circle mx-auto mt-4" style="width: 150px; height: 150px; object-fit: cover; border: 3px solid #198754;">
                 <div class="card-body">
-                    <h5 class="card-title text-success fw-bold">Vegetables</h5>
+                    <h5 class="card-title text-success">Vegetables</h5>
                     <p class="card-text text-muted">Farm Fresh</p>
                 </div>
             </div>
@@ -109,9 +83,9 @@
         <a href="{{ url_for('products') }}?category=Beverages" class="text-decoration-none">
             <div class="card category-card text-center border-0 shadow-sm h-100">
                 <img src="https://images.unsplash.com/photo-1544145945-f90425340c7e?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80" 
-                     class="card-img-top rounded-circle mx-auto mt-4" style="width: 150px; height: 150px; object-fit: cover; border: 3px solid #198754;" alt="Beverages">
+                     class="card-img-top rounded-circle mx-auto mt-4" style="width: 150px; height: 150px; object-fit: cover; border: 3px solid #198754;">
                 <div class="card-body">
-                    <h5 class="card-title text-success fw-bold">Beverages</h5>
+                    <h5 class="card-title text-success">Beverages</h5>
                     <p class="card-text text-muted">Refreshing Drinks</p>
                 </div>
             </div>
@@ -121,9 +95,9 @@
         <a href="{{ url_for('products') }}?category=Dairy" class="text-decoration-none">
             <div class="card category-card text-center border-0 shadow-sm h-100">
                 <img src="https://images.unsplash.com/photo-1628088062854-d1870b4553da?ixlib=rb-4.0.3&auto=format&fit=crop&w=400&q=80" 
-                     class="card-img-top rounded-circle mx-auto mt-4" style="width: 150px; height: 150px; object-fit: cover; border: 3px solid #198754;" alt="Dairy">
+                     class="card-img-top rounded-circle mx-auto mt-4" style="width: 150px; height: 150px; object-fit: cover; border: 3px solid #198754;">
                 <div class="card-body">
-                    <h5 class="card-title text-success fw-bold">Dairy</h5>
+                    <h5 class="card-title text-success">Dairy</h5>
                     <p class="card-text text-muted">Fresh & Organic</p>
                 </div>
             </div>
@@ -134,7 +108,7 @@
 <!-- Featured Products -->
 <div class="row mb-5">
     <div class="col-12 text-center mb-4">
-        <h2 class="display-6 fw-bold">Featured Products</h2>
+        <h2 class="display-6">Featured Products</h2>
         <p class="text-muted">Hand-picked just for you</p>
     </div>
     {% if products %}
@@ -143,12 +117,12 @@
             <div class="card h-100 product-card border-0 shadow-sm">
                 <img src="{{ product.image_url }}" class="card-img-top" alt="{{ product.name }}" style="height: 200px; object-fit: cover;">
                 <div class="card-body">
-                    <h5 class="card-title fw-bold">{{ product.name }}</h5>
+                    <h5 class="card-title">{{ product.name }}</h5>
                     <p class="card-text text-muted small">{{ product.description[:60] }}...</p>
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
-                            <span class="h5 text-success mb-0 fw-bold">Kes {{ "%.2f"|format(product.price) }}</span>
-                            <small class="text-muted d-block"><small>incl. fees</small></small>
+                            <span class="h5 text-success mb-0">Kes {{ "%.2f"|format(product.price) }}</span>
+                            <small class="text-muted d-block">incl. fees</small>
                         </div>
                         <a href="{{ url_for('product_detail', id=product.id) }}" class="btn btn-sm btn-success">View</a>
                     </div>
@@ -161,65 +135,60 @@
             <i class="bi bi-box-seam display-1 text-muted"></i>
             <h3 class="mt-3">No Products Yet</h3>
             <p class="text-muted">Check back soon for fresh products!</p>
-            {% if session.role == 'seller' or session.role == 'admin' %}
-            <a href="{{ url_for('add_product') }}" class="btn btn-success mt-3">
-                <i class="bi bi-plus-circle"></i> Add Your First Product
-            </a>
-            {% endif %}
         </div>
     {% endif %}
 </div>
 
-<!-- Why Choose Us Section -->
+<!-- Why Choose Us -->
 <div class="row mb-5 py-5 bg-light rounded-4">
     <div class="col-12 text-center mb-4">
-        <h2 class="display-6 fw-bold">Why Choose Fresh Marketplace?</h2>
+        <h2 class="display-6">Why Choose Fresh Marketplace?</h2>
         <p class="text-muted">We're committed to bringing you the best</p>
     </div>
     <div class="col-md-3 text-center">
         <div class="feature-icon bg-success bg-gradient text-white rounded-circle mb-3 mx-auto d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
             <i class="bi bi-truck display-4"></i>
         </div>
-        <h5 class="fw-bold">Free Delivery</h5>
+        <h5>Free Delivery</h5>
         <p class="text-muted">On orders over Kes 1000</p>
     </div>
     <div class="col-md-3 text-center">
         <div class="feature-icon bg-success bg-gradient text-white rounded-circle mb-3 mx-auto d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
             <i class="bi bi-clock display-4"></i>
         </div>
-        <h5 class="fw-bold">30-Min Delivery</h5>
+        <h5>30-Min Delivery</h5>
         <p class="text-muted">Quick delivery to your door</p>
     </div>
     <div class="col-md-3 text-center">
         <div class="feature-icon bg-success bg-gradient text-white rounded-circle mb-3 mx-auto d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
             <i class="bi bi-shield-check display-4"></i>
         </div>
-        <h5 class="fw-bold">100% Fresh</h5>
+        <h5>100% Fresh</h5>
         <p class="text-muted">Quality guaranteed</p>
     </div>
     <div class="col-md-3 text-center">
         <div class="feature-icon bg-success bg-gradient text-white rounded-circle mb-3 mx-auto d-flex align-items-center justify-content-center" style="width: 80px; height: 80px;">
             <i class="bi bi-currency-exchange display-4"></i>
         </div>
-        <h5 class="fw-bold">Best Prices</h5>
+        <h5>Best Prices</h5>
         <p class="text-muted">Direct from farmers</p>
     </div>
 </div>
 
-<!-- Newsletter Section -->
+<!-- Newsletter -->
 <div class="row mb-5">
     <div class="col-md-8 mx-auto">
         <div class="card bg-success text-white border-0 shadow-lg">
             <div class="card-body p-5">
                 <div class="row align-items-center">
                     <div class="col-md-7">
-                        <h3 class="fw-bold">Get Fresh Deals!</h3>
+                        <h3>Get Fresh Deals!</h3>
                         <p class="mb-0 opacity-75">Subscribe to our newsletter and get 10% off your first order</p>
                     </div>
                     <div class="col-md-5">
                         <form class="d-flex" id="newsletterForm">
                             <input type="email" class="form-control me-2" placeholder="Your email" required id="newsletterEmail">
-                            <button type="submit" class="btn btn-light text-success fw-bold" onclick="subscribeNewsletter(event)">Subscribe</button>
+                            <button type="submit" class="btn btn-light text-success" onclick="subscribeNewsletter(event)">Subscribe</button>
                         </form>
                     </div>
                 </div>
@@ -250,32 +219,9 @@
     bottom: 80px;
     text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
 }
-.feature-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-/* Floating Icons Animation */
-.position-fixed .btn {
-    transition: all 0.3s ease;
-}
-.position-fixed .btn:hover {
-    transform: scale(1.1);
-}
 </style>
 
 <script>
-function openLiveChat() {
-    {% if session.user_id %}
-        // If logged in, open general chat or support
-        window.location.href = "{{ url_for('inbox') }}";
-    {% else %}
-        // If not logged in, redirect to login
-        alert('Please log in to use live chat');
-        window.location.href = "{{ url_for('login') }}";
-    {% endif %}
-}
-
 function subscribeNewsletter(event) {
     event.preventDefault();
     const email = document.getElementById('newsletterEmail').value;
