@@ -5,7 +5,7 @@
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-8">
-        <div class="card">
+        <div class="card shadow">
             <div class="card-header bg-success text-white">
                 <h4 class="mb-0"><i class="bi bi-person-plus"></i> Create Account</h4>
             </div>
@@ -39,9 +39,14 @@
                             <input type="tel" name="phone_number" class="form-control" required>
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label class="form-label">Location *</label>
-                            <input type="text" name="location" class="form-control" required>
+                            <label class="form-label">WhatsApp Number</label>
+                            <input type="tel" name="whatsapp_number" class="form-control">
                         </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Location</label>
+                        <input type="text" name="location" class="form-control">
                     </div>
 
                     <div class="mb-3">
@@ -71,12 +76,12 @@
                     <div class="mb-3">
                         <label class="form-label">Profile Picture</label>
                         <input type="file" name="profile_image" class="form-control" accept="image/*">
-                        <small class="text-muted">Optional. Upload a profile picture (JPG, PNG, GIF)</small>
+                        <small class="text-muted">Optional. Upload a profile picture</small>
                     </div>
 
                     <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="termsCheck" required>
-                        <label class="form-check-label" for="termsCheck">
+                        <input type="checkbox" class="form-check-input" id="terms" required>
+                        <label class="form-check-label" for="terms">
                             I agree to the <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>
                         </label>
                     </div>
@@ -97,11 +102,7 @@
 <script>
 document.getElementById('roleSelect').addEventListener('change', function() {
     const sellerFields = document.getElementById('sellerFields');
-    if (this.value === 'seller') {
-        sellerFields.style.display = 'block';
-    } else {
-        sellerFields.style.display = 'none';
-    }
+    sellerFields.style.display = this.value === 'seller' ? 'block' : 'none';
 });
 </script>
 {% endblock %}
