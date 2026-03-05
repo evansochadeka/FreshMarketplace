@@ -47,7 +47,7 @@ db = SQLAlchemy(app)
 cohere_api_key = os.environ.get('COHERE_API_KEY')
 co = cohere.Client(cohere_api_key) if cohere_api_key else None
 
-# ===== MODELS =====
+# ===== FIXED MODELS WITH PROPER RELATIONSHIPS =====
 class User(db.Model):
     __tablename__ = 'user'
     id = db.Column(db.Integer, primary_key=True)
@@ -67,11 +67,12 @@ class User(db.Model):
     last_seen = db.Column(db.DateTime, default=datetime.utcnow)
     is_online = db.Column(db.Boolean, default=False)
     
-    # Relationships
+    # Relationships - ALL with explicit foreign_keys
     products = db.relationship('Product', back_populates='seller', lazy=True)
     sales = db.relationship('Sale', back_populates='seller', foreign_keys='Sale.seller_id', lazy=True)
     offline_sales = db.relationship('OfflineSale', back_populates='seller', lazy=True)
-    customers = db.relationship('Customer', back_populates='seller', lazy=True)
+    customers_as_seller = db.relationship('Customer', foreign_keys='Customer.seller_id', back_populates='seller', lazy=True)
+    customers_as_user = db.relationship('Customer', foreign_keys='Customer.user_id', back_populates='user', lazy=True)
     locations = db.relationship('UserLocation', back_populates='user', lazy=True)
     sent_messages = db.relationship('Message', foreign_keys='Message.sender_id', back_populates='sender', lazy=True)
     received_messages = db.relationship('Message', foreign_keys='Message.receiver_id', back_populates='receiver', lazy=True)
@@ -81,10 +82,10 @@ class User(db.Model):
     initiated_calls = db.relationship('VideoCall', foreign_keys='VideoCall.initiator_id', back_populates='initiator', lazy=True)
     received_calls = db.relationship('VideoCall', foreign_keys='VideoCall.receiver_id', back_populates='receiver', lazy=True)
     inventory_logs = db.relationship('InventoryLog', back_populates='seller', lazy=True)
-    product_inquiries = db.relationship('ProductInquiry', foreign_keys='ProductInquiry.buyer_id', back_populates='buyer', lazy=True)
-    received_inquiries = db.relationship('ProductInquiry', foreign_keys='ProductInquiry.seller_id', back_populates='seller', lazy=True)
-    rider_recommendations = db.relationship('RiderRecommendation', foreign_keys='RiderRecommendation.buyer_id', back_populates='buyer', lazy=True)
-    received_recommendations = db.relationship('RiderRecommendation', foreign_keys='RiderRecommendation.seller_id', back_populates='seller', lazy=True)
+    product_inquiries_as_buyer = db.relationship('ProductInquiry', foreign_keys='ProductInquiry.buyer_id', back_populates='buyer', lazy=True)
+    product_inquiries_as_seller = db.relationship('ProductInquiry', foreign_keys='ProductInquiry.seller_id', back_populates='seller', lazy=True)
+    rider_recommendations_as_buyer = db.relationship('RiderRecommendation', foreign_keys='RiderRecommendation.buyer_id', back_populates='buyer', lazy=True)
+    rider_recommendations_as_seller = db.relationship('RiderRecommendation', foreign_keys='RiderRecommendation.seller_id', back_populates='seller', lazy=True)
     notifications = db.relationship('Notification', back_populates='user', lazy=True)
 
 class Product(db.Model):
@@ -199,9 +200,10 @@ class Customer(db.Model):
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    seller = db.relationship('User', back_populates='customers')
+    # FIXED: Explicit foreign keys in relationships
+    seller = db.relationship('User', foreign_keys=[seller_id], back_populates='customers_as_seller')
+    user = db.relationship('User', foreign_keys=[user_id], back_populates='customers_as_user')
     purchases = db.relationship('Sale', back_populates='customer', lazy=True)
-    user = db.relationship('User', foreign_keys=[user_id])
 
 class Notification(db.Model):
     __tablename__ = 'notification'
@@ -353,8 +355,8 @@ class ProductInquiry(db.Model):
     answered_at = db.Column(db.DateTime)
     
     product = db.relationship('Product', back_populates='inquiries')
-    buyer = db.relationship('User', foreign_keys=[buyer_id], back_populates='product_inquiries')
-    seller = db.relationship('User', foreign_keys=[seller_id], back_populates='received_inquiries')
+    buyer = db.relationship('User', foreign_keys=[buyer_id], back_populates='product_inquiries_as_buyer')
+    seller = db.relationship('User', foreign_keys=[seller_id], back_populates='product_inquiries_as_seller')
     notifications = db.relationship('Notification', backref='inquiry', lazy=True)
 
 class RiderRecommendation(db.Model):
@@ -368,8 +370,8 @@ class RiderRecommendation(db.Model):
     status = db.Column(db.String(20), default='pending')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    buyer = db.relationship('User', foreign_keys=[buyer_id], back_populates='rider_recommendations')
-    seller = db.relationship('User', foreign_keys=[seller_id], back_populates='received_recommendations')
+    buyer = db.relationship('User', foreign_keys=[buyer_id], back_populates='rider_recommendations_as_buyer')
+    seller = db.relationship('User', foreign_keys=[seller_id], back_populates='rider_recommendations_as_seller')
     recommended_rider = db.relationship('User', foreign_keys=[recommended_rider_id])
 
 class OfflineSale(db.Model):
@@ -409,12 +411,26 @@ def role_required(role):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             if 'user_id' not in session:
+                flash('Please log in to access this page.', 'warning')
                 return redirect(url_for('login'))
-            user = User.query.get(session['user_id'])
-            if not user or (user.role != role and user.role != 'admin'):
-                flash('Access denied.', 'danger')
+            
+            try:
+                user = User.query.get(session['user_id'])
+                if not user:
+                    session.clear()
+                    flash('User not found. Please log in again.', 'danger')
+                    return redirect(url_for('login'))
+                
+                if user.role != role and user.role != 'admin':
+                    flash('Access denied. You do not have permission to view this page.', 'danger')
+                    return redirect(url_for('index'))
+                    
+                return f(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"Role check error: {e}")
+                flash('An error occurred. Please try again.', 'danger')
                 return redirect(url_for('index'))
-            return f(*args, **kwargs)
+                
         return decorated_function
     return decorator
 
@@ -501,11 +517,29 @@ def not_found_error(error):
 
 @app.context_processor
 def inject_available_riders():
+    """Inject available riders and unread notifications for templates"""
+    result = {
+        'available_riders': [],
+        'unread_notifications': 0
+    }
+    
     if 'user_id' in session:
-        available_riders = User.query.filter_by(role='rider', is_online=True).limit(5).all()
-        unread_notifications = Notification.query.filter_by(user_id=session['user_id'], is_read=False).count()
-        return dict(available_riders=available_riders, unread_notifications=unread_notifications)
-    return dict(available_riders=[], unread_notifications=0)
+        try:
+            result['available_riders'] = User.query.filter_by(role='rider', is_online=True).limit(5).all()
+        except Exception as e:
+            logger.error(f"Error fetching riders: {e}")
+            result['available_riders'] = []
+        
+        try:
+            result['unread_notifications'] = Notification.query.filter_by(
+                user_id=session['user_id'], 
+                is_read=False
+            ).count()
+        except Exception as e:
+            logger.error(f"Error fetching notifications: {e}")
+            result['unread_notifications'] = 0
+    
+    return result
 
 # ===== AUTHENTICATION ROUTES =====
 
@@ -685,15 +719,11 @@ def product_detail(id):
         if 'user_id' in session:
             product_inquiries = ProductInquiry.query.filter_by(product_id=id, buyer_id=session['user_id']).all()
         
-        # Get available riders for recommendation
-        available_riders = User.query.filter_by(role='rider', is_online=True).limit(5).all()
-        
         return render_template('product_detail.html', 
                              product=product, 
                              seller=seller, 
                              related_products=related_products,
-                             product_inquiries=product_inquiries,
-                             available_riders=available_riders)
+                             product_inquiries=product_inquiries)
     except Exception as e:
         logger.error(f"Product detail error: {e}")
         flash('Error loading product. Please try again.', 'danger')
@@ -957,7 +987,7 @@ def checkout():
             for product_id, quantity in cart.items():
                 product = Product.query.get(int(product_id))
                 if not product or not product.is_active:
-                    flash(f'Product {product.name if product else "Unknown"} is no longer available.', 'warning')
+                    flash(f'Product is no longer available.', 'warning')
                     return redirect(url_for('cart'))
                 
                 available = product.stock - product.reserved_stock
