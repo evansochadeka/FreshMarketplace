@@ -5,10 +5,49 @@
 {% block content %}
 <div class="row">
     <div class="col-md-6">
-        <img src="{{ product.image_url }}" class="img-fluid rounded shadow" alt="{{ product.name }}" style="max-height: 400px; width: 100%; object-fit: cover;">
+        <!-- Product Image Gallery -->
+        <div id="productCarousel" class="carousel slide mb-3" data-bs-ride="carousel">
+            <div class="carousel-inner rounded-3 shadow">
+                <div class="carousel-item active">
+                    <img src="{{ product.image_url }}" class="d-block w-100" alt="{{ product.name }}" style="height: 400px; object-fit: cover;">
+                </div>
+                {% if product.additional_images and product.additional_images|length > 0 %}
+                    {% for image in product.additional_images %}
+                    <div class="carousel-item">
+                        <img src="{{ image }}" class="d-block w-100" alt="{{ product.name }}" style="height: 400px; object-fit: cover;">
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+            {% if product.additional_images and product.additional_images|length > 0 %}
+            <button class="carousel-control-prev" type="button" data-bs-target="#productCarousel" data-bs-slide="prev">
+                <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                <span class="visually-hidden">Previous</span>
+            </button>
+            <button class="carousel-control-next" type="button" data-bs-target="#productCarousel" data-bs-slide="next">
+                <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                <span class="visually-hidden">Next</span>
+            </button>
+            {% endif %}
+        </div>
+        
+        <!-- Thumbnail Gallery -->
+        {% if product.additional_images and product.additional_images|length > 0 %}
+        <div class="row g-2">
+            <div class="col-3">
+                <img src="{{ product.image_url }}" class="img-fluid rounded cursor-pointer" onclick="jumpToSlide(0)" style="height: 80px; width: 100%; object-fit: cover; border: 2px solid #198754;">
+            </div>
+            {% for image in product.additional_images[:5] %}
+            <div class="col-3">
+                <img src="{{ image }}" class="img-fluid rounded cursor-pointer" onclick="jumpToSlide({{ loop.index }})" style="height: 80px; width: 100%; object-fit: cover;">
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
     </div>
     
     <div class="col-md-6">
+        <!-- Product Info -->
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
                 <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Home</a></li>
@@ -17,66 +56,233 @@
             </ol>
         </nav>
 
-        <h1 class="display-5">{{ product.name }}</h1>
-        
-        <div class="mb-2">
-            <span class="badge bg-success">{{ product.category }}</span>
+        <div class="d-flex align-items-center mb-2">
+            <h1 class="mb-0">{{ product.name }}</h1>
+            <span class="badge bg-success ms-2">{{ product.category }}</span>
             {% if product.stock > 0 %}
-                <span class="badge bg-success">In Stock</span>
+                <span class="badge bg-success ms-2">In Stock</span>
             {% else %}
-                <span class="badge bg-danger">Out of Stock</span>
+                <span class="badge bg-danger ms-2">Out of Stock</span>
             {% endif %}
         </div>
-
-        <h2 class="text-success mb-3">Kes {{ "%.2f"|format(product.price) }}</h2>
         
-        <div class="mb-3 p-3 bg-light rounded">
-            <small class="text-muted">Price breakdown:</small><br>
-            <small>Base price: Kes {{ "%.2f"|format(product.base_price) }}</small><br>
-            <small>+10% rider fee: Kes {{ "%.2f"|format(product.base_price * 0.10) }}</small><br>
-            <small>+10% platform fee: Kes {{ "%.2f"|format(product.base_price * 0.10) }}</small>
-        </div>
-
-        <p class="lead">{{ product.description }}</p>
-
-        {% if seller %}
-        <div class="mb-3 p-3 bg-light rounded">
-            <strong>Seller:</strong> {{ seller.business_name or seller.username }}
-            {% if seller.phone_number %}
-            <br><small>Phone: {{ seller.phone_number }}</small>
+        <!-- Seller Info with Interaction Buttons -->
+        <div class="d-flex align-items-center mb-3 p-3 bg-light rounded-3">
+            <div class="d-flex align-items-center">
+                {% if seller and seller.profile_image %}
+                <img src="{{ seller.profile_image }}" class="rounded-circle me-2" width="50" height="50" style="object-fit: cover;">
+                {% else %}
+                <i class="bi bi-person-circle fs-1 me-2"></i>
+                {% endif %}
+                <div>
+                    <h6 class="mb-0">{{ seller.business_name or seller.username if seller else 'Unknown Seller' }}</h6>
+                    <small class="text-muted">
+                        <i class="bi bi-star-fill text-warning"></i> 4.5 
+                        <i class="bi bi-chat ms-2"></i> 98% positive
+                    </small>
+                </div>
+            </div>
+            {% if session.user_id and session.user_id != (seller.id if seller else None) %}
+            <div class="ms-auto">
+                <div class="btn-group">
+                    <a href="{{ url_for('chat_with_user', receiver_id=seller.id, product_id=product.id) if seller else '#' }}" 
+                       class="btn btn-sm btn-outline-success" title="Chat with Seller">
+                        <i class="bi bi-chat-dots"></i>
+                    </a>
+                    {% if seller and seller.phone_number %}
+                    <a href="tel:{{ seller.phone_number }}" class="btn btn-sm btn-outline-primary" title="Call Seller">
+                        <i class="bi bi-telephone"></i>
+                    </a>
+                    {% endif %}
+                    {% if seller and seller.whatsapp_number %}
+                    <a href="https://wa.me/{{ seller.whatsapp_number|replace('+', '')|replace(' ', '') }}?text=Hello%20{{ seller.username|urlencode }}%2C%20I'm%20interested%20in%20{{ product.name|urlencode }}" 
+                       target="_blank" 
+                       class="btn btn-sm btn-outline-success" title="WhatsApp Seller">
+                        <i class="bi bi-whatsapp"></i>
+                    </a>
+                    {% endif %}
+                    {% if product.video_call_enabled and seller and seller.is_online %}
+                    <button class="btn btn-sm btn-outline-info" onclick="initiateVideoCall()" title="Video Call">
+                        <i class="bi bi-camera-video"></i>
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
             {% endif %}
         </div>
-        {% endif %}
-
-        {% if product.stock > 0 %}
-            <p class="text-muted">Available: {{ product.stock }} units</p>
-            
-            {% if session.user_id %}
-                <form method="POST" action="{{ url_for('add_to_cart', id=product.id) }}">
-                    <div class="row g-2">
-                        <div class="col-md-4">
-                            <input type="number" name="quantity" class="form-control" value="1" min="1" max="{{ product.stock }}">
-                        </div>
-                        <div class="col-md-8">
-                            <button type="submit" class="btn btn-success btn-lg w-100">
-                                <i class="bi bi-cart-plus"></i> Add to Cart
-                            </button>
-                        </div>
-                    </div>
-                </form>
+        
+        <!-- Price Breakdown -->
+        <div class="mb-3">
+            <h2 class="text-success">Kes {{ "%.2f"|format(product.price) }}</h2>
+            <small class="text-muted">
+                Base price: Kes {{ "%.2f"|format(product.base_price) }} 
+                <span class="badge bg-info">+10% rider fee</span>
+                <span class="badge bg-info">+10% platform fee</span>
+            </small>
+        </div>
+        
+        <!-- Stock Status -->
+        <div class="mb-3">
+            {% if product.stock > 10 %}
+            <span class="badge bg-success">In Stock ({{ product.stock }} available)</span>
+            {% elif product.stock > 0 %}
+            <span class="badge bg-warning">Low Stock ({{ product.stock }} left)</span>
             {% else %}
-                <a href="{{ url_for('login') }}" class="btn btn-success btn-lg w-100">
-                    <i class="bi bi-box-arrow-in-right"></i> Login to Purchase
-                </a>
+            <span class="badge bg-danger">Out of Stock</span>
             {% endif %}
-        {% else %}
-            <button class="btn btn-secondary btn-lg w-100" disabled>
+        </div>
+        
+        <p class="lead">{{ product.description }}</p>
+        
+        <!-- Product Details -->
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <p class="mb-1"><strong>SKU:</strong> {{ product.sku or 'N/A' }}</p>
+                {% if product.barcode %}
+                <p class="mb-1"><strong>Barcode:</strong> {{ product.barcode }}</p>
+                {% endif %}
+            </div>
+            <div class="col-md-6">
+                <p class="mb-1"><strong>Added:</strong> {{ product.created_at.strftime('%Y-%m-%d') if product.created_at else 'N/A' }}</p>
+                {% if product.updated_at %}
+                <p class="mb-1"><strong>Updated:</strong> {{ product.updated_at.strftime('%Y-%m-%d') }}</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Add to Cart / Inquiry Section -->
+        {% if session.user_id %}
+            {% if product.stock > 0 %}
+            <form method="POST" action="{{ url_for('add_to_cart', id=product.id) }}" class="mb-3">
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label class="form-label">Quantity:</label>
+                        <input type="number" name="quantity" class="form-control" value="1" min="1" max="{{ product.stock }}">
+                    </div>
+                    <div class="col-md-8 d-flex align-items-end">
+                        <button type="submit" class="btn btn-success btn-lg w-100">
+                            <i class="bi bi-cart-plus"></i> Add to Cart
+                        </button>
+                    </div>
+                </div>
+            </form>
+            {% else %}
+            <button class="btn btn-secondary btn-lg w-100 mb-3" disabled>
                 <i class="bi bi-x-circle"></i> Out of Stock
             </button>
+            {% endif %}
+            
+            <!-- Buyer-Seller Interaction Buttons -->
+            <div class="row g-2 mb-3">
+                <div class="col-md-6">
+                    <button class="btn btn-outline-primary w-100" onclick="askQuestion()">
+                        <i class="bi bi-question-circle"></i> Ask Seller
+                    </button>
+                </div>
+                <div class="col-md-6">
+                    <button class="btn btn-outline-info w-100" onclick="recommendRider()">
+                        <i class="bi bi-person-check"></i> Recommend Rider
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Inquiry Form (Hidden by default) -->
+            <div id="inquiryForm" class="card mb-3" style="display: none;">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0"><i class="bi bi-question-circle"></i> Ask a Question</h6>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('product_inquiry', product_id=product.id) }}">
+                        <div class="mb-3">
+                            <label class="form-label">Your Question</label>
+                            <textarea name="question" class="form-control" rows="3" required 
+                                      placeholder="Ask about product quality, delivery options, bulk orders..."></textarea>
+                        </div>
+                        <div class="d-flex justify-content-end">
+                            <button type="button" class="btn btn-secondary me-2" onclick="hideInquiryForm()">Cancel</button>
+                            <button type="submit" class="btn btn-info">Submit Question</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- Rider Recommendation Form (Hidden by default) -->
+            <div id="riderForm" class="card mb-3" style="display: none;">
+                <div class="card-header bg-success text-white">
+                    <h6 class="mb-0"><i class="bi bi-person-check"></i> Recommend a Rider</h6>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('recommend_rider', product_id=product.id) }}">
+                        <div class="mb-3">
+                            <label class="form-label">Select Rider</label>
+                            <select name="rider_id" class="form-select" required>
+                                <option value="">Choose a rider...</option>
+                                {% if available_riders %}
+                                    {% for rider in available_riders %}
+                                    <option value="{{ rider.id }}">
+                                        {{ rider.username }} - {{ rider.phone_number }} 
+                                        ({{ 'Online' if rider.is_online else 'Offline' }})
+                                    </option>
+                                    {% endfor %}
+                                {% else %}
+                                    <option value="" disabled>No riders available</option>
+                                {% endif %}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Reason for Recommendation</label>
+                            <textarea name="reason" class="form-control" rows="2" 
+                                      placeholder="Why do you recommend this rider?"></textarea>
+                        </div>
+                        <div class="d-flex justify-content-end">
+                            <button type="button" class="btn btn-secondary me-2" onclick="hideRiderForm()">Cancel</button>
+                            <button type="submit" class="btn btn-success">Send Recommendation</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- Previous Inquiries -->
+            {% if product_inquiries and product_inquiries|length > 0 %}
+            <div class="card mt-3">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0"><i class="bi bi-chat-history"></i> Your Questions</h6>
+                </div>
+                <div class="card-body">
+                    {% for inquiry in product_inquiries %}
+                    <div class="mb-2 p-2 {% if loop.index % 2 %}bg-light{% endif %} rounded">
+                        <div class="d-flex">
+                            <i class="bi bi-question-circle text-info me-2"></i>
+                            <div class="flex-grow-1">
+                                <p class="mb-1"><strong>You:</strong> {{ inquiry.question }}</p>
+                                {% if inquiry.answer %}
+                                <p class="mb-0 text-success">
+                                    <i class="bi bi-check-circle"></i> 
+                                    <strong>Seller:</strong> {{ inquiry.answer }}
+                                </p>
+                                <small class="text-muted">{{ inquiry.answered_at.strftime('%Y-%m-%d %H:%M') if inquiry.answered_at }}</small>
+                                {% else %}
+                                <p class="mb-0 text-warning"><em>Awaiting response...</em></p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            
+        {% else %}
+        <a href="{{ url_for('login') }}" class="btn btn-success btn-lg w-100">
+            <i class="bi bi-box-arrow-in-right"></i> Login to Purchase or Inquire
+        </a>
         {% endif %}
         
-        <!-- Share button -->
-        <div class="mt-3 text-end">
+        <!-- Share and Actions -->
+        <div class="d-flex justify-content-between mt-3">
+            <button class="btn btn-outline-secondary btn-sm" onclick="window.print()">
+                <i class="bi bi-printer"></i> Print
+            </button>
             <button class="btn btn-outline-secondary btn-sm" onclick="shareProduct()">
                 <i class="bi bi-share"></i> Share
             </button>
@@ -107,6 +313,9 @@
 {% endif %}
 
 <style>
+.cursor-pointer {
+    cursor: pointer;
+}
 .product-card {
     transition: transform 0.2s;
 }
@@ -117,6 +326,62 @@
 </style>
 
 <script>
+function jumpToSlide(index) {
+    var myCarousel = document.getElementById('productCarousel');
+    if (myCarousel) {
+        var carousel = bootstrap.Carousel.getInstance(myCarousel);
+        if (carousel) {
+            carousel.to(index);
+        }
+    }
+}
+
+function initiateVideoCall() {
+    {% if product.video_call_enabled and seller and seller.id %}
+    fetch('/video-call/initiate', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            receiver_id: {{ seller.id }},
+            product_id: {{ product.id }}
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.open(`/video-call/${data.call_id}`, '_blank', 'width=1200,height=800');
+        } else {
+            alert('Could not initiate video call: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        alert('Error initiating video call');
+    });
+    {% else %}
+    alert('Video call not available for this product');
+    {% endif %}
+}
+
+function askQuestion() {
+    document.getElementById('inquiryForm').style.display = 'block';
+    document.getElementById('riderForm').style.display = 'none';
+}
+
+function recommendRider() {
+    document.getElementById('riderForm').style.display = 'block';
+    document.getElementById('inquiryForm').style.display = 'none';
+}
+
+function hideInquiryForm() {
+    document.getElementById('inquiryForm').style.display = 'none';
+}
+
+function hideRiderForm() {
+    document.getElementById('riderForm').style.display = 'none';
+}
+
 function shareProduct() {
     if (navigator.share) {
         navigator.share({
