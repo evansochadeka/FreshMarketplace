@@ -85,6 +85,7 @@ class User(db.Model):
     received_inquiries = db.relationship('ProductInquiry', foreign_keys='ProductInquiry.seller_id', back_populates='seller', lazy=True)
     rider_recommendations = db.relationship('RiderRecommendation', foreign_keys='RiderRecommendation.buyer_id', back_populates='buyer', lazy=True)
     received_recommendations = db.relationship('RiderRecommendation', foreign_keys='RiderRecommendation.seller_id', back_populates='seller', lazy=True)
+    notifications = db.relationship('Notification', foreign_keys='Notification.user_id', back_populates='user', lazy=True)
 
 class Product(db.Model):
     __tablename__ = 'product'
@@ -97,6 +98,7 @@ class Product(db.Model):
     image_url = db.Column(db.String(500))
     additional_images = db.Column(db.JSON, default=list)
     stock = db.Column(db.Integer, default=0)
+    reserved_stock = db.Column(db.Integer, default=0)  # Stock that's in pending orders
     sku = db.Column(db.String(50), unique=True)
     barcode = db.Column(db.String(100))
     seller_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -116,6 +118,7 @@ class Product(db.Model):
 class Order(db.Model):
     __tablename__ = 'order'
     id = db.Column(db.Integer, primary_key=True)
+    order_number = db.Column(db.String(20), unique=True, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     rider_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     seller_id = db.Column(db.Integer, db.ForeignKey('user.id'))
@@ -123,14 +126,18 @@ class Order(db.Model):
     subtotal = db.Column(db.Float, nullable=False, default=0)
     rider_fee = db.Column(db.Float, default=0)
     platform_fee = db.Column(db.Float, default=0)
-    status = db.Column(db.String(20), default='pending')
+    status = db.Column(db.String(20), default='pending')  # pending, confirmed, processing, shipped, delivered, cancelled
     delivery_address = db.Column(db.String(200))
     delivery_lat = db.Column(db.Float)
     delivery_lng = db.Column(db.Float)
     payment_method = db.Column(db.String(50), default='cash')
+    payment_status = db.Column(db.String(20), default='pending')  # pending, paid, failed
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    completed_at = db.Column(db.DateTime)
+    confirmed_at = db.Column(db.DateTime)
+    shipped_at = db.Column(db.DateTime)
+    delivered_at = db.Column(db.DateTime)
+    cancelled_at = db.Column(db.DateTime)
     
     user = db.relationship('User', foreign_keys=[user_id], backref='customer_orders')
     rider = db.relationship('User', foreign_keys=[rider_id], backref='rider_deliveries')
@@ -138,6 +145,7 @@ class Order(db.Model):
     items = db.relationship('OrderItem', back_populates='order', lazy=True)
     tracking = db.relationship('OrderTracking', back_populates='order', lazy=True)
     reviews = db.relationship('Review', back_populates='order', lazy=True)
+    notifications = db.relationship('Notification', back_populates='order', lazy=True)
 
 class OrderItem(db.Model):
     __tablename__ = 'order_item'
@@ -156,6 +164,7 @@ class OrderItem(db.Model):
 class Sale(db.Model):
     __tablename__ = 'sale'
     id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'))
     seller_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
     customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'))
@@ -169,6 +178,7 @@ class Sale(db.Model):
     payment_method = db.Column(db.String(50))
     notes = db.Column(db.Text)
     
+    order = db.relationship('Order')
     seller = db.relationship('User', back_populates='sales')
     product = db.relationship('Product')
     customer = db.relationship('Customer', back_populates='purchases')
@@ -177,19 +187,35 @@ class Customer(db.Model):
     __tablename__ = 'customer'
     id = db.Column(db.Integer, primary_key=True)
     seller_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))  # If they have an account
     name = db.Column(db.String(100), nullable=False)
     phone = db.Column(db.String(20))
     whatsapp = db.Column(db.String(20))
     email = db.Column(db.String(120))
     address = db.Column(db.String(200))
     total_purchases = db.Column(db.Float, default=0)
-    visit_count = db.Column(db.Integer, default=0)
-    last_visit = db.Column(db.DateTime)
+    purchase_count = db.Column(db.Integer, default=0)
+    last_purchase = db.Column(db.DateTime)
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     seller = db.relationship('User', back_populates='customers')
     purchases = db.relationship('Sale', back_populates='customer', lazy=True)
+    user = db.relationship('User', foreign_keys=[user_id])
+
+class Notification(db.Model):
+    __tablename__ = 'notification'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'))
+    title = db.Column(db.String(200), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+    type = db.Column(db.String(50), default='info')  # order, inquiry, recommendation, system
+    is_read = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    user = db.relationship('User', back_populates='notifications')
+    order = db.relationship('Order', back_populates='notifications')
 
 class Review(db.Model):
     __tablename__ = 'review'
@@ -329,6 +355,7 @@ class ProductInquiry(db.Model):
     product = db.relationship('Product', back_populates='inquiries')
     buyer = db.relationship('User', foreign_keys=[buyer_id], back_populates='product_inquiries')
     seller = db.relationship('User', foreign_keys=[seller_id], back_populates='received_inquiries')
+    notifications = db.relationship('Notification', backref='inquiry', lazy=True)
 
 class RiderRecommendation(db.Model):
     __tablename__ = 'rider_recommendation'
@@ -420,6 +447,40 @@ def log_inventory_change(product_id, seller_id, previous_stock, new_stock, reaso
     except:
         db.session.rollback()
 
+def generate_order_number():
+    """Generate unique order number"""
+    date_part = datetime.now().strftime('%Y%m%d')
+    random_part = uuid.uuid4().hex[:6].upper()
+    return f"ORD-{date_part}-{random_part}"
+
+def create_notification(user_id, title, message, type='info', order_id=None):
+    """Create a notification for a user"""
+    try:
+        notification = Notification(
+            user_id=user_id,
+            title=title,
+            message=message,
+            type=type,
+            order_id=order_id
+        )
+        db.session.add(notification)
+        db.session.commit()
+        
+        # Emit real-time notification via SocketIO
+        socketio.emit('notification', {
+            'id': notification.id,
+            'title': title,
+            'message': message,
+            'type': type,
+            'order_id': order_id,
+            'created_at': notification.created_at.isoformat()
+        }, room=f'user_{user_id}')
+        
+        return notification
+    except Exception as e:
+        logger.error(f"Error creating notification: {e}")
+        return None
+
 def generate_receipt_number():
     return f"REC-{datetime.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
 
@@ -444,8 +505,9 @@ def not_found_error(error):
 def inject_available_riders():
     if 'user_id' in session:
         available_riders = User.query.filter_by(role='rider', is_online=True).limit(5).all()
-        return dict(available_riders=available_riders)
-    return dict(available_riders=[])
+        unread_notifications = Notification.query.filter_by(user_id=session['user_id'], is_read=False).count()
+        return dict(available_riders=available_riders, unread_notifications=unread_notifications)
+    return dict(available_riders=[], unread_notifications=0)
 
 # ===== AUTHENTICATION ROUTES =====
 
@@ -607,54 +669,37 @@ def products():
 @app.route('/product/<int:id>')
 def product_detail(id):
     try:
-        logger.info(f"Product detail requested for ID: {id}")
         product = Product.query.get(id)
         
         if not product:
-            logger.error(f"Product ID {id} not found")
             flash('Product not found.', 'danger')
             return redirect(url_for('products'))
         
         if not product.is_active:
-            logger.warning(f"Product ID {id} is inactive")
             flash('This product is no longer available.', 'warning')
             return redirect(url_for('products'))
         
         seller = User.query.get(product.seller_id)
-        if not seller:
-            seller = User.query.filter_by(role='seller').first() or User.query.filter_by(role='admin').first()
+        related_products = Product.query.filter_by(category=product.category, is_active=True).filter(Product.id != product.id).limit(4).all()
         
-        related_products = Product.query.filter(
-            Product.category == product.category,
-            Product.is_active == True,
-            Product.id != product.id
-        ).limit(4).all()
+        # Get product inquiries for this user if logged in
+        product_inquiries = []
+        if 'user_id' in session:
+            product_inquiries = ProductInquiry.query.filter_by(product_id=id, buyer_id=session['user_id']).all()
+        
+        # Get available riders for recommendation
+        available_riders = User.query.filter_by(role='rider', is_online=True).limit(5).all()
         
         return render_template('product_detail.html', 
                              product=product, 
                              seller=seller, 
-                             related_products=related_products)
+                             related_products=related_products,
+                             product_inquiries=product_inquiries,
+                             available_riders=available_riders)
     except Exception as e:
         logger.error(f"Product detail error: {e}")
         flash('Error loading product. Please try again.', 'danger')
         return redirect(url_for('products'))
-
-@app.route('/debug/products')
-def debug_products():
-    try:
-        products = Product.query.all()
-        result = []
-        for p in products:
-            result.append({
-                'id': p.id,
-                'name': p.name,
-                'is_active': p.is_active,
-                'seller_id': p.seller_id,
-                'url': url_for('product_detail', id=p.id, _external=True)
-            })
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 # ===== PRODUCT INQUIRY ROUTES =====
 
@@ -678,6 +723,16 @@ def product_inquiry(id):
     try:
         db.session.add(inquiry)
         db.session.commit()
+        
+        # Create notification for seller
+        buyer = User.query.get(session['user_id'])
+        create_notification(
+            user_id=product.seller_id,
+            title=f"New Question about {product.name}",
+            message=f"{buyer.username} asked: {question[:100]}...",
+            type='inquiry'
+        )
+        
         flash('Your question has been sent to the seller!', 'success')
     except Exception as e:
         db.session.rollback()
@@ -712,6 +767,16 @@ def recommend_rider(id):
     try:
         db.session.add(recommendation)
         db.session.commit()
+        
+        # Create notification for seller
+        buyer = User.query.get(session['user_id'])
+        create_notification(
+            user_id=product.seller_id,
+            title=f"Rider Recommendation for {product.name}",
+            message=f"{buyer.username} recommended rider {rider.username}",
+            type='recommendation'
+        )
+        
         flash(f'Rider {rider.username} recommended to seller!', 'success')
     except Exception as e:
         db.session.rollback()
@@ -747,6 +812,15 @@ def answer_inquiry(id):
     
     try:
         db.session.commit()
+        
+        # Create notification for buyer
+        create_notification(
+            user_id=inquiry.buyer_id,
+            title=f"Your Question about {inquiry.product.name} has been Answered",
+            message=f"Seller replied: {answer[:100]}...",
+            type='inquiry'
+        )
+        
         flash('Answer sent to buyer!', 'success')
     except Exception as e:
         db.session.rollback()
@@ -754,607 +828,7 @@ def answer_inquiry(id):
     
     return redirect(url_for('seller_inquiries'))
 
-# ===== SELLER DASHBOARD =====
-
-@app.route('/seller/dashboard')
-@role_required('seller')
-def seller_dashboard():
-    try:
-        seller = User.query.get(session['user_id'])
-        
-        if not seller:
-            flash('Seller not found.', 'danger')
-            return redirect(url_for('index'))
-        
-        products = Product.query.filter_by(seller_id=seller.id, is_active=True).all()
-        
-        total_products = len(products)
-        total_stock = sum(p.stock for p in products) if products else 0
-        low_stock_count = sum(1 for p in products if p.stock <= p.low_stock_threshold) if products else 0
-        
-        today = datetime.now().date()
-        today_sales = 0
-        total_sales = 0
-        try:
-            today_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.total_price), 0)).filter(
-                Sale.seller_id == seller.id,
-                db.func.date(Sale.sale_date) == today
-            ).scalar() or 0
-        except:
-            pass
-        
-        try:
-            total_sales = db.session.query(db.func.coalesce(db.func.sum(Sale.total_price), 0)).filter(
-                Sale.seller_id == seller.id
-            ).scalar() or 0
-        except:
-            pass
-        
-        recent_orders = []
-        try:
-            recent_orders = Order.query.filter_by(seller_id=seller.id).order_by(Order.created_at.desc()).limit(5).all()
-        except:
-            pass
-        
-        top_products = []
-        try:
-            top_products = db.session.query(
-                Product, db.func.coalesce(db.func.sum(OrderItem.quantity), 0).label('total_sold')
-            ).outerjoin(OrderItem, OrderItem.product_id == Product.id).filter(
-                Product.seller_id == seller.id
-            ).group_by(Product.id).order_by(db.desc('total_sold')).limit(5).all()
-        except:
-            pass
-        
-        recent_customers = []
-        try:
-            recent_customers = Customer.query.filter_by(seller_id=seller.id).order_by(Customer.last_visit.desc()).limit(5).all()
-        except:
-            recent_customers = []
-        
-        unread_messages = 0
-        try:
-            unread_messages = Message.query.filter_by(receiver_id=seller.id, is_read=False).count()
-        except:
-            pass
-        
-        pending_inquiries = 0
-        try:
-            pending_inquiries = ProductInquiry.query.filter_by(seller_id=seller.id, status='pending').count()
-        except:
-            pass
-        
-        stats = {
-            'total_products': total_products,
-            'total_stock': total_stock,
-            'low_stock_count': low_stock_count,
-            'total_sales': float(total_sales),
-            'today_sales': float(today_sales),
-            'unread_messages': unread_messages,
-            'pending_inquiries': pending_inquiries
-        }
-        
-        return render_template('seller_dashboard.html', 
-                             seller=seller,
-                             products=products,
-                             stats=stats,
-                             recent_orders=recent_orders,
-                             low_stock_products=[p for p in products if p.stock <= p.low_stock_threshold],
-                             top_products=top_products,
-                             recent_customers=recent_customers)
-    except Exception as e:
-        logger.error(f"Seller dashboard error: {str(e)}")
-        flash('Error loading dashboard. Please try again.', 'danger')
-        return redirect(url_for('index'))
-
-@app.route('/seller/products')
-@role_required('seller')
-def seller_products():
-    try:
-        seller = User.query.get(session['user_id'])
-        show_all = request.args.get('show_all', 'false').lower() == 'true'
-        
-        if show_all:
-            products = Product.query.filter_by(is_active=True).all()
-            comparison_mode = True
-        else:
-            products = Product.query.filter_by(seller_id=seller.id, is_active=True).all()
-            comparison_mode = False
-        
-        return render_template('seller_products.html', 
-                             products=products, 
-                             seller=seller,
-                             comparison_mode=comparison_mode)
-    except Exception as e:
-        logger.error(f"Seller products error: {e}")
-        flash('Error loading products.', 'danger')
-        return redirect(url_for('seller_dashboard'))
-
-@app.route('/seller/add_product', methods=['GET', 'POST'])
-@role_required('seller')
-def add_product():
-    if request.method == 'POST':
-        try:
-            name = request.form['name']
-            description = request.form['description']
-            base_price = float(request.form['base_price'])
-            category = request.form['category']
-            stock = int(request.form['stock'])
-            sku = request.form.get('sku', f"SKU-{uuid.uuid4().hex[:8].upper()}")
-            barcode = request.form.get('barcode', '')
-            low_stock_threshold = int(request.form.get('low_stock_threshold', 5))
-            video_call_enabled = request.form.get('video_call_enabled') == 'on'
-            
-            final_price, rider_fee, platform_fee = calculate_price_with_fees(base_price)
-            
-            image_url = '/static/images/default-product.png'
-            if 'product_image' in request.files:
-                file = request.files['product_image']
-                if file and file.filename and allowed_file(file.filename):
-                    filename = secure_filename(f"{name}_{uuid.uuid4().hex[:8]}_{file.filename}")
-                    file.save(os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], filename))
-                    image_url = f'/static/uploads/{filename}'
-            elif request.form.get('image_url'):
-                image_url = request.form['image_url']
-            
-            additional_images = []
-            if 'additional_images' in request.files:
-                files = request.files.getlist('additional_images')
-                for file in files:
-                    if file and file.filename and allowed_file(file.filename):
-                        filename = secure_filename(f"{name}_extra_{uuid.uuid4().hex[:8]}_{file.filename}")
-                        file.save(os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], filename))
-                        additional_images.append(f'/static/uploads/{filename}')
-            
-            product = Product(
-                name=name,
-                description=description,
-                base_price=base_price,
-                price=final_price,
-                category=category,
-                image_url=image_url,
-                additional_images=additional_images,
-                stock=stock,
-                sku=sku,
-                barcode=barcode,
-                seller_id=session['user_id'],
-                low_stock_threshold=low_stock_threshold,
-                video_call_enabled=video_call_enabled
-            )
-            
-            db.session.add(product)
-            db.session.commit()
-            
-            log_inventory_change(product.id, session['user_id'], 0, stock, 'initial_stock')
-            
-            flash(f'Product added successfully! Final price: Kes{final_price}', 'success')
-            return redirect(url_for('seller_products'))
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Add product error: {e}")
-            flash('Error adding product. Please try again.', 'danger')
-            return redirect(url_for('add_product'))
-    
-    return render_template('add_product.html')
-
-@app.route('/seller/edit_product/<int:id>', methods=['GET', 'POST'])
-@role_required('seller')
-def edit_product(id):
-    product = Product.query.get_or_404(id)
-    
-    if product.seller_id != session['user_id']:
-        flash('You do not have permission to edit this product.', 'danger')
-        return redirect(url_for('seller_products'))
-    
-    if request.method == 'POST':
-        try:
-            previous_stock = product.stock
-            
-            product.name = request.form['name']
-            product.description = request.form['description']
-            product.base_price = float(request.form['base_price'])
-            final_price, _, _ = calculate_price_with_fees(product.base_price)
-            product.price = final_price
-            product.category = request.form['category']
-            product.stock = int(request.form['stock'])
-            product.sku = request.form.get('sku', product.sku)
-            product.barcode = request.form.get('barcode', '')
-            product.low_stock_threshold = int(request.form.get('low_stock_threshold', 5))
-            product.video_call_enabled = request.form.get('video_call_enabled') == 'on'
-            
-            if 'product_image' in request.files:
-                file = request.files['product_image']
-                if file and file.filename and allowed_file(file.filename):
-                    filename = secure_filename(f"{product.name}_{uuid.uuid4().hex[:8]}_{file.filename}")
-                    file.save(os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], filename))
-                    product.image_url = f'/static/uploads/{filename}'
-            elif request.form.get('image_url'):
-                product.image_url = request.form['image_url']
-            
-            db.session.commit()
-            
-            if product.stock != previous_stock:
-                log_inventory_change(product.id, session['user_id'], previous_stock, product.stock, 'manual_update')
-            
-            flash('Product updated successfully!', 'success')
-            return redirect(url_for('seller_products'))
-        except Exception as e:
-            db.session.rollback()
-            logger.error(f"Edit product error: {e}")
-            flash('Error updating product.', 'danger')
-    
-    return render_template('edit_product.html', product=product)
-
-@app.route('/seller/delete_product/<int:id>')
-@role_required('seller')
-def delete_product(id):
-    product = Product.query.get_or_404(id)
-    
-    if product.seller_id != session['user_id']:
-        flash('You do not have permission to delete this product.', 'danger')
-        return redirect(url_for('seller_products'))
-    
-    try:
-        product.is_active = False
-        db.session.commit()
-        flash('Product deleted successfully!', 'success')
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Delete product error: {e}")
-        flash('Error deleting product.', 'danger')
-    
-    return redirect(url_for('seller_products'))
-
-@app.route('/seller/inventory')
-@role_required('seller')
-def seller_inventory():
-    try:
-        seller = User.query.get(session['user_id'])
-        products = Product.query.filter_by(seller_id=seller.id, is_active=True).all()
-        
-        logs = []
-        try:
-            logs = InventoryLog.query.filter_by(seller_id=seller.id).order_by(InventoryLog.created_at.desc()).limit(50).all()
-        except:
-            pass
-        
-        total_stock_value = sum(p.price * p.stock for p in products) if products else 0
-        total_stock_cost = sum(p.base_price * p.stock for p in products) if products else 0
-        
-        stats = {
-            'total_products': len(products),
-            'total_stock_value': total_stock_value,
-            'total_stock_cost': total_stock_cost,
-            'potential_profit': total_stock_value - total_stock_cost,
-            'low_stock_count': sum(1 for p in products if p.stock <= p.low_stock_threshold) if products else 0
-        }
-        
-        return render_template('seller_inventory.html', 
-                             products=products, 
-                             logs=logs,
-                             stats=stats)
-    except Exception as e:
-        logger.error(f"Inventory error: {e}")
-        flash('Error loading inventory.', 'danger')
-        return redirect(url_for('seller_dashboard'))
-
-@app.route('/seller/restock/<int:id>', methods=['POST'])
-@role_required('seller')
-def restock_product(id):
-    try:
-        product = Product.query.get_or_404(id)
-        
-        if product.seller_id != session['user_id']:
-            return jsonify({'error': 'Unauthorized'}), 403
-        
-        quantity = int(request.form.get('quantity', 0))
-        if quantity <= 0:
-            flash('Invalid quantity.', 'danger')
-            return redirect(url_for('seller_inventory'))
-        
-        previous_stock = product.stock
-        product.stock += quantity
-        db.session.commit()
-        
-        log_inventory_change(product.id, session['user_id'], previous_stock, product.stock, 'restock')
-        
-        flash(f'Added {quantity} units to {product.name}', 'success')
-    except Exception as e:
-        logger.error(f"Restock error: {e}")
-        flash('Error restocking product.', 'danger')
-    
-    return redirect(url_for('seller_inventory'))
-
-# ===== POS SYSTEM =====
-
-@app.route('/seller/pos')
-@role_required('seller')
-def pos_dashboard():
-    try:
-        seller = User.query.get(session['user_id'])
-        products = Product.query.filter_by(seller_id=seller.id, is_active=True).filter(Product.stock > 0).all()
-        
-        today = datetime.now().date()
-        today_sales = []
-        today_total = 0
-        try:
-            today_sales = OfflineSale.query.filter(
-                OfflineSale.seller_id == seller.id,
-                db.func.date(OfflineSale.created_at) == today
-            ).all()
-            today_total = sum(sale.total for sale in today_sales)
-        except:
-            pass
-        
-        return render_template('pos_dashboard.html', 
-                             products=products,
-                             today_sales=today_sales,
-                             today_total=today_total)
-    except Exception as e:
-        logger.error(f"POS dashboard error: {e}")
-        flash('Error loading POS.', 'danger')
-        return redirect(url_for('seller_dashboard'))
-
-@app.route('/seller/pos/checkout', methods=['POST'])
-@role_required('seller')
-def pos_checkout():
-    try:
-        seller = User.query.get(session['user_id'])
-        
-        data = request.get_json()
-        cart = data.get('cart', [])
-        customer_name = data.get('customer_name', '')
-        customer_phone = data.get('customer_phone', '')
-        customer_whatsapp = data.get('customer_whatsapp', customer_phone)
-        payment_method = data.get('payment_method', 'cash')
-        discount = float(data.get('discount', 0))
-        
-        if not cart:
-            return jsonify({'error': 'Cart is empty'}), 400
-        
-        items = []
-        subtotal = 0
-        
-        for item in cart:
-            product = Product.query.get(item['product_id'])
-            if not product or product.seller_id != seller.id:
-                return jsonify({'error': f'Invalid product: {item["product_id"]}'}), 400
-            
-            if product.stock < item['quantity']:
-                return jsonify({'error': f'Insufficient stock for {product.name}'}), 400
-            
-            previous_stock = product.stock
-            product.stock -= item['quantity']
-            
-            item_total = product.price * item['quantity']
-            subtotal += item_total
-            
-            items.append({
-                'product_id': product.id,
-                'product_name': product.name,
-                'quantity': item['quantity'],
-                'unit_price': product.price,
-                'total': item_total
-            })
-            
-            log_inventory_change(product.id, seller.id, previous_stock, product.stock, 'pos_sale')
-            
-            try:
-                sale = Sale(
-                    seller_id=seller.id,
-                    product_id=product.id,
-                    quantity=item['quantity'],
-                    unit_price=product.price,
-                    total_price=item_total,
-                    sale_type='pos',
-                    payment_method=payment_method
-                )
-                db.session.add(sale)
-            except:
-                pass
-        
-        total = subtotal - discount
-        receipt_number = generate_receipt_number()
-        
-        offline_sale = OfflineSale(
-            seller_id=seller.id,
-            customer_name=customer_name,
-            customer_phone=customer_phone,
-            items=items,
-            subtotal=subtotal,
-            discount=discount,
-            total=total,
-            payment_method=payment_method,
-            receipt_number=receipt_number
-        )
-        db.session.add(offline_sale)
-        
-        if customer_name:
-            try:
-                customer = Customer.query.filter_by(seller_id=seller.id, phone=customer_phone).first()
-                if customer:
-                    customer.total_purchases += total
-                    customer.visit_count += 1
-                    customer.last_visit = datetime.utcnow()
-                    if customer_whatsapp:
-                        customer.whatsapp = customer_whatsapp
-                else:
-                    customer = Customer(
-                        seller_id=seller.id,
-                        name=customer_name,
-                        phone=customer_phone,
-                        whatsapp=customer_whatsapp,
-                        total_purchases=total,
-                        visit_count=1,
-                        last_visit=datetime.utcnow()
-                    )
-                    db.session.add(customer)
-            except:
-                pass
-        
-        db.session.commit()
-        
-        return jsonify({
-            'success': True,
-            'receipt_number': receipt_number,
-            'total': total
-        })
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"POS checkout error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/seller/pos/receipt/<receipt_number>')
-@role_required('seller')
-def pos_receipt(receipt_number):
-    try:
-        sale = OfflineSale.query.filter_by(receipt_number=receipt_number).first_or_404()
-        
-        if sale.seller_id != session['user_id']:
-            flash('Access denied.', 'danger')
-            return redirect(url_for('pos_dashboard'))
-        
-        return render_template('pos_receipt.html', sale=sale)
-    except Exception as e:
-        logger.error(f"Receipt error: {e}")
-        flash('Receipt not found.', 'danger')
-        return redirect(url_for('pos_dashboard'))
-
-# ===== CUSTOMER MANAGEMENT =====
-
-@app.route('/seller/customers')
-@role_required('seller')
-def customer_list():
-    try:
-        seller = User.query.get(session['user_id'])
-        customers = Customer.query.filter_by(seller_id=seller.id).order_by(Customer.total_purchases.desc()).all()
-        return render_template('customer_list.html', customers=customers)
-    except Exception as e:
-        logger.error(f"Customer list error: {e}")
-        flash('Error loading customers.', 'danger')
-        return redirect(url_for('seller_dashboard'))
-
-@app.route('/seller/customer/<int:id>')
-@role_required('seller')
-def customer_detail(id):
-    try:
-        customer = Customer.query.get_or_404(id)
-        
-        if customer.seller_id != session['user_id']:
-            flash('Access denied.', 'danger')
-            return redirect(url_for('customer_list'))
-        
-        purchases = []
-        try:
-            purchases = Sale.query.filter_by(seller_id=session['user_id'], customer_id=customer.id).order_by(Sale.sale_date.desc()).all()
-        except:
-            pass
-        
-        return render_template('customer_detail.html', customer=customer, purchases=purchases)
-    except Exception as e:
-        logger.error(f"Customer detail error: {e}")
-        flash('Error loading customer details.', 'danger')
-        return redirect(url_for('customer_list'))
-
-@app.route('/seller/customer/add', methods=['POST'])
-@role_required('seller')
-def add_customer():
-    try:
-        seller_id = session['user_id']
-        name = request.form.get('name')
-        phone = request.form.get('phone')
-        whatsapp = request.form.get('whatsapp', phone)
-        email = request.form.get('email')
-        address = request.form.get('address')
-        
-        customer = Customer(
-            seller_id=seller_id,
-            name=name,
-            phone=phone,
-            whatsapp=whatsapp,
-            email=email,
-            address=address
-        )
-        
-        db.session.add(customer)
-        db.session.commit()
-        
-        flash('Customer added successfully!', 'success')
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Add customer error: {e}")
-        flash('Error adding customer.', 'danger')
-    
-    return redirect(url_for('customer_list'))
-
-# ===== SALES REPORTS =====
-
-@app.route('/seller/sales')
-@role_required('seller')
-def sales_report():
-    try:
-        seller = User.query.get(session['user_id'])
-        
-        period = request.args.get('period', 'month')
-        today = datetime.now().date()
-        
-        if period == 'day':
-            start_date = today
-        elif period == 'week':
-            start_date = today - timedelta(days=today.weekday())
-        elif period == 'month':
-            start_date = today.replace(day=1)
-        else:
-            start_date = today.replace(month=1, day=1)
-        
-        sales = []
-        total_sales = 0
-        total_orders = 0
-        avg_order_value = 0
-        sales_by_product = []
-        sales_by_day = []
-        
-        try:
-            sales = Sale.query.filter(
-                Sale.seller_id == seller.id,
-                Sale.sale_date >= start_date
-            ).order_by(Sale.sale_date.desc()).all()
-            
-            total_sales = sum(s.total_price for s in sales)
-            total_orders = len(sales)
-            avg_order_value = total_sales / total_orders if total_orders > 0 else 0
-            
-            sales_by_product = db.session.query(
-                Product.name, 
-                db.func.coalesce(db.func.sum(Sale.total_price), 0).label('total'),
-                db.func.coalesce(db.func.count(Sale.id), 0).label('count')
-            ).outerjoin(Sale, Sale.product_id == Product.id).filter(
-                Product.seller_id == seller.id
-            ).group_by(Product.id).order_by(db.desc('total')).all()
-            
-            sales_by_day = db.session.query(
-                db.func.date(Sale.sale_date).label('date'),
-                db.func.coalesce(db.func.sum(Sale.total_price), 0).label('total')
-            ).filter(
-                Sale.seller_id == seller.id,
-                Sale.sale_date >= start_date
-            ).group_by(db.func.date(Sale.sale_date)).order_by('date').all()
-        except:
-            pass
-        
-        return render_template('sales_report.html',
-                             period=period,
-                             total_sales=total_sales,
-                             total_orders=total_orders,
-                             avg_order_value=avg_order_value,
-                             sales_by_product=sales_by_product,
-                             sales_by_day=sales_by_day)
-    except Exception as e:
-        logger.error(f"Sales report error: {e}")
-        flash('Error loading sales report.', 'danger')
-        return redirect(url_for('seller_dashboard'))
-
-# ===== CART & CHECKOUT =====
+# ===== CART & CHECKOUT ROUTES =====
 
 @app.route('/cart')
 @login_required
@@ -1367,6 +841,13 @@ def cart():
         for product_id, quantity in cart_items.items():
             product = Product.query.get(int(product_id))
             if product and product.is_active:
+                # Check available stock (including reserved)
+                available = product.stock - product.reserved_stock
+                if quantity > available:
+                    quantity = available
+                    if quantity == 0:
+                        continue
+                
                 products.append({'product': product, 'quantity': quantity})
                 subtotal += product.price * quantity
         
@@ -1400,12 +881,19 @@ def add_to_cart(id):
             flash('This product is no longer available.', 'warning')
             return redirect(url_for('products'))
         
-        if product.stock < quantity:
-            flash(f'Sorry, only {product.stock} units available.', 'warning')
+        # Check available stock (excluding reserved)
+        available = product.stock - product.reserved_stock
+        if available < quantity:
+            flash(f'Sorry, only {available} units available.', 'warning')
             return redirect(url_for('product_detail', id=id))
         
         cart = session.get('cart', {})
-        cart[str(id)] = cart.get(str(id), 0) + quantity
+        current = cart.get(str(id), 0)
+        if current + quantity > available:
+            flash(f'Cannot add {quantity} more. Only {available - current} available.', 'warning')
+            return redirect(url_for('cart'))
+        
+        cart[str(id)] = current + quantity
         session['cart'] = cart
         flash(f'Added {quantity} x {product.name} to cart!', 'success')
     except Exception as e:
@@ -1427,11 +915,13 @@ def update_cart(id):
                 flash('Item removed from cart.', 'success')
         else:
             product = Product.query.get(id)
-            if product and product.stock >= quantity:
-                cart[str(id)] = quantity
-                flash('Cart updated.', 'success')
-            else:
-                flash('Invalid quantity.', 'danger')
+            if product:
+                available = product.stock - product.reserved_stock
+                if quantity <= available:
+                    cart[str(id)] = quantity
+                    flash('Cart updated.', 'success')
+                else:
+                    flash(f'Only {available} units available.', 'danger')
         
         session['cart'] = cart
     except Exception as e:
@@ -1473,18 +963,27 @@ def checkout():
             order_items = []
             sellers = set()
             
+            # Validate all items and calculate totals
             for product_id, quantity in cart.items():
                 product = Product.query.get(int(product_id))
-                if product and product.is_active and product.stock >= quantity:
-                    item_total = product.price * quantity
-                    subtotal += item_total
-                    sellers.add(product.seller_id)
-                    order_items.append({
-                        'product': product,
-                        'quantity': quantity,
-                        'price': product.price,
-                        'seller_price': product.base_price
-                    })
+                if not product or not product.is_active:
+                    flash(f'Product {product.name if product else "Unknown"} is no longer available.', 'warning')
+                    return redirect(url_for('cart'))
+                
+                available = product.stock - product.reserved_stock
+                if available < quantity:
+                    flash(f'Only {available} units of {product.name} available.', 'warning')
+                    return redirect(url_for('cart'))
+                
+                item_total = product.price * quantity
+                subtotal += item_total
+                sellers.add(product.seller_id)
+                order_items.append({
+                    'product': product,
+                    'quantity': quantity,
+                    'price': product.price,
+                    'seller_price': product.base_price
+                })
             
             if not order_items:
                 flash('Some items are no longer available.', 'warning')
@@ -1494,7 +993,9 @@ def checkout():
             platform_fee = subtotal * 0.10
             total = subtotal + rider_fee + platform_fee
             
+            # Create order
             order = Order(
+                order_number=generate_order_number(),
                 user_id=user.id,
                 subtotal=subtotal,
                 rider_fee=rider_fee,
@@ -1502,7 +1003,8 @@ def checkout():
                 total=total,
                 status='pending',
                 delivery_address=delivery_address,
-                payment_method=payment_method
+                payment_method=payment_method,
+                payment_status='pending'
             )
             
             if len(sellers) == 1:
@@ -1511,11 +1013,10 @@ def checkout():
             db.session.add(order)
             db.session.flush()
             
+            # Reserve stock
             for item in order_items:
                 product = item['product']
-                
-                previous_stock = product.stock
-                product.stock -= item['quantity']
+                product.reserved_stock += item['quantity']
                 
                 order_item = OrderItem(
                     order_id=order.id,
@@ -1527,31 +1028,47 @@ def checkout():
                 )
                 db.session.add(order_item)
                 
-                log_inventory_change(product.id, product.seller_id, previous_stock, product.stock, 'order', order.id)
-                
-                try:
-                    sale = Sale(
-                        seller_id=product.seller_id,
-                        product_id=product.id,
-                        quantity=item['quantity'],
-                        unit_price=item['price'],
-                        total_price=item['price'] * item['quantity'],
-                        sale_type='online',
-                        status='pending'
-                    )
-                    db.session.add(sale)
-                except:
-                    pass
+                log_inventory_change(
+                    product.id, 
+                    product.seller_id, 
+                    product.stock - product.reserved_stock + item['quantity'], 
+                    product.stock - product.reserved_stock, 
+                    'reserve', 
+                    order.id
+                )
             
+            # Assign rider if available
             rider = find_nearest_rider(delivery_address)
             if rider:
                 order.rider_id = rider.id
             
             db.session.commit()
+            
+            # Clear cart
             session['cart'] = {}
+            
+            # Create notification for seller(s)
+            for seller_id in sellers:
+                create_notification(
+                    user_id=seller_id,
+                    title=f"New Order #{order.order_number}",
+                    message=f"You have received a new order worth Kes {total:.2f}",
+                    type='order',
+                    order_id=order.id
+                )
+            
+            # Notify buyer
+            create_notification(
+                user_id=user.id,
+                title=f"Order #{order.order_number} Placed Successfully",
+                message=f"Your order of Kes {total:.2f} has been placed and is pending confirmation.",
+                type='order',
+                order_id=order.id
+            )
             
             flash('Order placed successfully!', 'success')
             return redirect(url_for('order_detail', id=order.id))
+            
         except Exception as e:
             db.session.rollback()
             logger.error(f"Checkout error: {e}")
@@ -1567,6 +1084,11 @@ def checkout():
         for product_id, quantity in cart.items():
             product = Product.query.get(int(product_id))
             if product and product.is_active:
+                available = product.stock - product.reserved_stock
+                if quantity > available:
+                    quantity = available
+                    if quantity == 0:
+                        continue
                 products.append({'product': product, 'quantity': quantity})
                 subtotal += product.price * quantity
         
@@ -1628,53 +1150,147 @@ def orders():
         flash('Error loading orders. Please try again.', 'danger')
         return redirect(url_for('index'))
 
-# ===== RIDER DASHBOARD =====
+@app.route('/order/<int:id>/confirm', methods=['POST'])
+@role_required('seller')
+def confirm_order(id):
+    """Seller confirms order and prepares for shipping"""
+    try:
+        order = Order.query.get_or_404(id)
+        
+        if order.seller_id != session['user_id']:
+            flash('Access denied.', 'danger')
+            return redirect(url_for('seller_dashboard'))
+        
+        if order.status != 'pending':
+            flash('Order cannot be confirmed.', 'danger')
+            return redirect(url_for('order_detail', id=id))
+        
+        order.status = 'confirmed'
+        order.confirmed_at = datetime.utcnow()
+        db.session.commit()
+        
+        # Notify buyer
+        create_notification(
+            user_id=order.user_id,
+            title=f"Order #{order.order_number} Confirmed",
+            message="Your order has been confirmed and is being prepared for shipping.",
+            type='order',
+            order_id=order.id
+        )
+        
+        flash('Order confirmed successfully!', 'success')
+    except Exception as e:
+        logger.error(f"Confirm order error: {e}")
+        flash('Error confirming order.', 'danger')
+    
+    return redirect(url_for('order_detail', id=id))
+
+@app.route('/order/<int:id>/cancel', methods=['POST'])
+@login_required
+def cancel_order(id):
+    """Cancel order and release reserved stock"""
+    try:
+        order = Order.query.get_or_404(id)
+        user = User.query.get(session['user_id'])
+        
+        # Check permissions (buyer, seller, or admin can cancel)
+        if user.role != 'admin' and order.user_id != user.id and order.seller_id != user.id:
+            flash('Access denied.', 'danger')
+            return redirect(url_for('orders'))
+        
+        # Only pending or confirmed orders can be cancelled
+        if order.status not in ['pending', 'confirmed']:
+            flash('Order cannot be cancelled at this stage.', 'danger')
+            return redirect(url_for('order_detail', id=id))
+        
+        # Release reserved stock
+        for item in order.items:
+            product = item.product
+            product.reserved_stock -= item.quantity
+            log_inventory_change(
+                product.id,
+                product.seller_id,
+                product.stock - product.reserved_stock + item.quantity,
+                product.stock - product.reserved_stock,
+                'cancel',
+                order.id
+            )
+        
+        order.status = 'cancelled'
+        order.cancelled_at = datetime.utcnow()
+        db.session.commit()
+        
+        # Notify relevant parties
+        if user.id == order.user_id:
+            # Buyer cancelled
+            if order.seller_id:
+                create_notification(
+                    user_id=order.seller_id,
+                    title=f"Order #{order.order_number} Cancelled",
+                    message="The buyer has cancelled this order.",
+                    type='order',
+                    order_id=order.id
+                )
+        elif user.id == order.seller_id:
+            # Seller cancelled
+            create_notification(
+                user_id=order.user_id,
+                title=f"Order #{order.order_number} Cancelled",
+                message="The seller has cancelled your order.",
+                type='order',
+                order_id=order.id
+            )
+        
+        flash('Order cancelled successfully!', 'success')
+    except Exception as e:
+        logger.error(f"Cancel order error: {e}")
+        flash('Error cancelling order.', 'danger')
+    
+    return redirect(url_for('order_detail', id=id))
+
+# ===== RIDER ROUTES =====
 
 @app.route('/rider/dashboard')
 @role_required('rider')
 def rider_dashboard():
     try:
         rider = User.query.get(session['user_id'])
+        
+        # Get assigned deliveries
         deliveries = Order.query.filter_by(rider_id=rider.id).order_by(Order.created_at.desc()).all()
         
-        completed = sum(1 for o in deliveries if o.status == 'completed')
-        pending = sum(1 for o in deliveries if o.status == 'pending')
-        in_transit = sum(1 for o in deliveries if o.status == 'in_transit')
+        # Statistics
+        completed = sum(1 for o in deliveries if o.status == 'delivered')
+        in_transit = sum(1 for o in deliveries if o.status == 'shipped')
+        pending = sum(1 for o in deliveries if o.status == 'confirmed')
         
-        available_orders = Order.query.filter_by(rider_id=None, status='pending').all()
+        # Available orders for assignment
+        available_orders = Order.query.filter(
+            Order.rider_id == None,
+            Order.status == 'confirmed'
+        ).order_by(Order.created_at).all()
+        
+        stats = {
+            'completed': completed,
+            'in_transit': in_transit,
+            'pending': pending,
+            'total_earnings': sum(o.rider_fee for o in deliveries if o.status == 'delivered')
+        }
         
         return render_template('rider_dashboard.html', 
+                             rider=rider,
                              deliveries=deliveries,
                              available_orders=available_orders,
-                             stats={'completed': completed, 'pending': pending, 'in_transit': in_transit})
+                             stats=stats)
     except Exception as e:
         logger.error(f"Rider dashboard error: {e}")
         flash('Error loading dashboard.', 'danger')
         return redirect(url_for('index'))
 
-@app.route('/rider/update_status/<int:id>', methods=['POST'])
-@role_required('rider')
-def update_delivery_status(id):
-    try:
-        order = Order.query.get_or_404(id)
-        if order.rider_id != session['user_id']:
-            flash('Access denied.', 'danger')
-            return redirect(url_for('rider_dashboard'))
-        
-        order.status = request.form['status']
-        db.session.commit()
-        
-        flash('Delivery status updated!', 'success')
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Update status error: {e}")
-        flash('Error updating status.', 'danger')
-    
-    return redirect(url_for('rider_dashboard'))
-
 @app.route('/rider/accept_order/<int:id>', methods=['POST'])
 @role_required('rider')
 def accept_order(id):
+    """Rider accepts an order for delivery"""
     try:
         order = Order.query.get_or_404(id)
         
@@ -1682,11 +1298,67 @@ def accept_order(id):
             flash('Order already assigned to another rider.', 'danger')
             return redirect(url_for('rider_dashboard'))
         
+        if order.status != 'confirmed':
+            flash('Order is not ready for delivery.', 'danger')
+            return redirect(url_for('rider_dashboard'))
+        
         order.rider_id = session['user_id']
-        order.status = 'in_transit'
+        order.status = 'shipped'
+        order.shipped_at = datetime.utcnow()
         db.session.commit()
         
-        flash('Order accepted!', 'success')
+        # Reduce actual stock when shipped
+        for item in order.items:
+            product = item.product
+            previous_stock = product.stock
+            product.stock -= item.quantity
+            product.reserved_stock -= item.quantity
+            log_inventory_change(
+                product.id,
+                product.seller_id,
+                previous_stock,
+                product.stock,
+                'shipped',
+                order.id
+            )
+        
+        # Create sale record
+        for item in order.items:
+            sale = Sale(
+                order_id=order.id,
+                seller_id=item.seller_id,
+                product_id=item.product_id,
+                quantity=item.quantity,
+                unit_price=item.price,
+                total_price=item.price * item.quantity,
+                profit=(item.price - item.seller_price) * item.quantity,
+                sale_type='online',
+                status='completed',
+                payment_method=order.payment_method
+            )
+            db.session.add(sale)
+        
+        db.session.commit()
+        
+        # Notify buyer and seller
+        create_notification(
+            user_id=order.user_id,
+            title=f"Order #{order.order_number} Shipped",
+            message="Your order is on its way! Track it in real-time.",
+            type='order',
+            order_id=order.id
+        )
+        
+        if order.seller_id:
+            create_notification(
+                user_id=order.seller_id,
+                title=f"Order #{order.order_number} Shipped",
+                message="Your order has been picked up by a rider.",
+                type='order',
+                order_id=order.id
+            )
+        
+        flash('Order accepted! You can now deliver it.', 'success')
     except Exception as e:
         db.session.rollback()
         logger.error(f"Accept order error: {e}")
@@ -1694,7 +1366,55 @@ def accept_order(id):
     
     return redirect(url_for('rider_dashboard'))
 
-# ===== RIDER TRACKING =====
+@app.route('/rider/update_status/<int:id>', methods=['POST'])
+@role_required('rider')
+def update_delivery_status(id):
+    """Update delivery status (shipped -> delivered)"""
+    try:
+        order = Order.query.get_or_404(id)
+        if order.rider_id != session['user_id']:
+            flash('Access denied.', 'danger')
+            return redirect(url_for('rider_dashboard'))
+        
+        new_status = request.form['status']
+        
+        if new_status == 'delivered' and order.status == 'shipped':
+            order.status = 'delivered'
+            order.delivered_at = datetime.utcnow()
+            
+            # Update payment status if cash on delivery
+            if order.payment_method == 'cash':
+                order.payment_status = 'paid'
+            
+            # Notify buyer and seller
+            create_notification(
+                user_id=order.user_id,
+                title=f"Order #{order.order_number} Delivered",
+                message="Your order has been delivered! Enjoy your products.",
+                type='order',
+                order_id=order.id
+            )
+            
+            if order.seller_id:
+                create_notification(
+                    user_id=order.seller_id,
+                    title=f"Order #{order.order_number} Delivered",
+                    message="Your order has been successfully delivered.",
+                    type='order',
+                    order_id=order.id
+                )
+            
+            flash('Order marked as delivered!', 'success')
+        else:
+            flash('Invalid status update.', 'danger')
+        
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Update status error: {e}")
+        flash('Error updating status.', 'danger')
+    
+    return redirect(url_for('rider_dashboard'))
 
 @app.route('/rider/update-location', methods=['POST'])
 @login_required
@@ -1799,6 +1519,736 @@ def track_order(order_id):
         flash('Error loading tracking.', 'danger')
         return redirect(url_for('orders'))
 
+# ===== SELLER DASHBOARD =====
+
+@app.route('/seller/dashboard')
+@role_required('seller')
+def seller_dashboard():
+    try:
+        seller = User.query.get(session['user_id'])
+        
+        if not seller:
+            flash('Seller not found.', 'danger')
+            return redirect(url_for('index'))
+        
+        # Get seller's products
+        products = Product.query.filter_by(seller_id=seller.id, is_active=True).all()
+        
+        # Get orders
+        orders = Order.query.filter_by(seller_id=seller.id).order_by(Order.created_at.desc()).all()
+        
+        # Get pending orders
+        pending_orders = [o for o in orders if o.status == 'pending']
+        confirmed_orders = [o for o in orders if o.status == 'confirmed']
+        shipped_orders = [o for o in orders if o.status == 'shipped']
+        delivered_orders = [o for o in orders if o.status == 'delivered']
+        
+        # Get sales data
+        today = datetime.now().date()
+        today_sales = 0
+        week_sales = 0
+        month_sales = 0
+        total_sales = 0
+        
+        # Get completed sales from Sale table
+        sales = Sale.query.filter_by(seller_id=seller.id, status='completed').all()
+        for sale in sales:
+            total_sales += sale.total_price
+            if sale.sale_date.date() == today:
+                today_sales += sale.total_price
+            if sale.sale_date >= datetime.now() - timedelta(days=7):
+                week_sales += sale.total_price
+            if sale.sale_date.month == today.month and sale.sale_date.year == today.year:
+                month_sales += sale.total_price
+        
+        # Get recent customers
+        recent_customers = Customer.query.filter_by(seller_id=seller.id).order_by(Customer.last_purchase.desc()).limit(5).all()
+        
+        # Get low stock products
+        low_stock_products = [p for p in products if p.stock <= p.low_stock_threshold]
+        
+        # Get unread messages
+        unread_messages = Message.query.filter_by(receiver_id=seller.id, is_read=False).count()
+        
+        # Get pending inquiries
+        pending_inquiries = ProductInquiry.query.filter_by(seller_id=seller.id, status='pending').count()
+        
+        # Get unread notifications
+        unread_notifications = Notification.query.filter_by(user_id=seller.id, is_read=False).count()
+        
+        stats = {
+            'total_products': len(products),
+            'total_orders': len(orders),
+            'pending_orders': len(pending_orders),
+            'confirmed_orders': len(confirmed_orders),
+            'shipped_orders': len(shipped_orders),
+            'delivered_orders': len(delivered_orders),
+            'total_sales': total_sales,
+            'today_sales': today_sales,
+            'week_sales': week_sales,
+            'month_sales': month_sales,
+            'low_stock_count': len(low_stock_products),
+            'unread_messages': unread_messages,
+            'pending_inquiries': pending_inquiries,
+            'unread_notifications': unread_notifications
+        }
+        
+        # Get recent orders for display
+        recent_orders = orders[:5]
+        
+        # Get top products by sales
+        from sqlalchemy import func
+        top_products = db.session.query(
+            Product, func.sum(OrderItem.quantity).label('total_sold')
+        ).join(OrderItem).filter(Product.seller_id == seller.id).group_by(Product).order_by(func.sum(OrderItem.quantity).desc()).limit(5).all()
+        
+        return render_template('seller_dashboard.html', 
+                             seller=seller,
+                             products=products,
+                             stats=stats,
+                             recent_orders=recent_orders,
+                             low_stock_products=low_stock_products,
+                             top_products=top_products,
+                             recent_customers=recent_customers)
+    except Exception as e:
+        logger.error(f"Seller dashboard error: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        flash('Error loading dashboard. Please try again.', 'danger')
+        return redirect(url_for('index'))
+
+@app.route('/seller/orders')
+@role_required('seller')
+def seller_orders():
+    """View all orders for seller"""
+    try:
+        seller = User.query.get(session['user_id'])
+        orders = Order.query.filter_by(seller_id=seller.id).order_by(Order.created_at.desc()).all()
+        
+        return render_template('seller_orders.html', orders=orders)
+    except Exception as e:
+        logger.error(f"Seller orders error: {e}")
+        flash('Error loading orders.', 'danger')
+        return redirect(url_for('seller_dashboard'))
+
+@app.route('/seller/products')
+@role_required('seller')
+def seller_products():
+    try:
+        seller = User.query.get(session['user_id'])
+        show_all = request.args.get('show_all', 'false').lower() == 'true'
+        
+        if show_all:
+            products = Product.query.filter_by(is_active=True).all()
+            comparison_mode = True
+        else:
+            products = Product.query.filter_by(seller_id=seller.id, is_active=True).all()
+            comparison_mode = False
+        
+        return render_template('seller_products.html', 
+                             products=products, 
+                             seller=seller,
+                             comparison_mode=comparison_mode)
+    except Exception as e:
+        logger.error(f"Seller products error: {e}")
+        flash('Error loading products.', 'danger')
+        return redirect(url_for('seller_dashboard'))
+
+@app.route('/seller/add_product', methods=['GET', 'POST'])
+@role_required('seller')
+def add_product():
+    if request.method == 'POST':
+        try:
+            name = request.form['name']
+            description = request.form['description']
+            base_price = float(request.form['base_price'])
+            category = request.form['category']
+            stock = int(request.form['stock'])
+            sku = request.form.get('sku', f"SKU-{uuid.uuid4().hex[:8].upper()}")
+            barcode = request.form.get('barcode', '')
+            low_stock_threshold = int(request.form.get('low_stock_threshold', 5))
+            video_call_enabled = request.form.get('video_call_enabled') == 'on'
+            
+            final_price, rider_fee, platform_fee = calculate_price_with_fees(base_price)
+            
+            # Handle image upload
+            image_url = '/static/images/default-product.png'
+            if 'product_image' in request.files:
+                file = request.files['product_image']
+                if file and file.filename and allowed_file(file.filename):
+                    filename = secure_filename(f"{name}_{uuid.uuid4().hex[:8]}_{file.filename}")
+                    file.save(os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], filename))
+                    image_url = f'/static/uploads/{filename}'
+            elif request.form.get('image_url'):
+                image_url = request.form['image_url']
+            
+            # Handle additional images
+            additional_images = []
+            if 'additional_images' in request.files:
+                files = request.files.getlist('additional_images')
+                for file in files:
+                    if file and file.filename and allowed_file(file.filename):
+                        filename = secure_filename(f"{name}_extra_{uuid.uuid4().hex[:8]}_{file.filename}")
+                        file.save(os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], filename))
+                        additional_images.append(f'/static/uploads/{filename}')
+            
+            product = Product(
+                name=name,
+                description=description,
+                base_price=base_price,
+                price=final_price,
+                category=category,
+                image_url=image_url,
+                additional_images=additional_images,
+                stock=stock,
+                reserved_stock=0,
+                sku=sku,
+                barcode=barcode,
+                seller_id=session['user_id'],
+                low_stock_threshold=low_stock_threshold,
+                video_call_enabled=video_call_enabled
+            )
+            
+            db.session.add(product)
+            db.session.commit()
+            
+            log_inventory_change(product.id, session['user_id'], 0, stock, 'initial_stock')
+            
+            flash(f'Product added successfully! Final price: Kes{final_price}', 'success')
+            return redirect(url_for('seller_products'))
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Add product error: {e}")
+            flash('Error adding product. Please try again.', 'danger')
+            return redirect(url_for('add_product'))
+    
+    return render_template('add_product.html')
+
+@app.route('/seller/edit_product/<int:id>', methods=['GET', 'POST'])
+@role_required('seller')
+def edit_product(id):
+    product = Product.query.get_or_404(id)
+    
+    if product.seller_id != session['user_id']:
+        flash('You do not have permission to edit this product.', 'danger')
+        return redirect(url_for('seller_products'))
+    
+    if request.method == 'POST':
+        try:
+            previous_stock = product.stock
+            
+            product.name = request.form['name']
+            product.description = request.form['description']
+            product.base_price = float(request.form['base_price'])
+            final_price, _, _ = calculate_price_with_fees(product.base_price)
+            product.price = final_price
+            product.category = request.form['category']
+            product.stock = int(request.form['stock'])
+            product.sku = request.form.get('sku', product.sku)
+            product.barcode = request.form.get('barcode', '')
+            product.low_stock_threshold = int(request.form.get('low_stock_threshold', 5))
+            product.video_call_enabled = request.form.get('video_call_enabled') == 'on'
+            
+            if 'product_image' in request.files:
+                file = request.files['product_image']
+                if file and file.filename and allowed_file(file.filename):
+                    filename = secure_filename(f"{product.name}_{uuid.uuid4().hex[:8]}_{file.filename}")
+                    file.save(os.path.join(app.root_path, app.config['UPLOAD_FOLDER'], filename))
+                    product.image_url = f'/static/uploads/{filename}'
+            elif request.form.get('image_url'):
+                product.image_url = request.form['image_url']
+            
+            db.session.commit()
+            
+            if product.stock != previous_stock:
+                log_inventory_change(product.id, session['user_id'], previous_stock, product.stock, 'manual_update')
+            
+            flash('Product updated successfully!', 'success')
+            return redirect(url_for('seller_products'))
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Edit product error: {e}")
+            flash('Error updating product.', 'danger')
+    
+    return render_template('edit_product.html', product=product)
+
+@app.route('/seller/delete_product/<int:id>')
+@role_required('seller')
+def delete_product(id):
+    product = Product.query.get_or_404(id)
+    
+    if product.seller_id != session['user_id']:
+        flash('You do not have permission to delete this product.', 'danger')
+        return redirect(url_for('seller_products'))
+    
+    try:
+        product.is_active = False
+        db.session.commit()
+        flash('Product deleted successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Delete product error: {e}")
+        flash('Error deleting product.', 'danger')
+    
+    return redirect(url_for('seller_products'))
+
+@app.route('/seller/inventory')
+@role_required('seller')
+def seller_inventory():
+    try:
+        seller = User.query.get(session['user_id'])
+        products = Product.query.filter_by(seller_id=seller.id, is_active=True).all()
+        
+        # Get inventory logs
+        logs = InventoryLog.query.filter_by(seller_id=seller.id).order_by(InventoryLog.created_at.desc()).limit(50).all()
+        
+        # Calculate inventory value
+        total_stock_value = sum(p.price * p.stock for p in products)
+        total_stock_cost = sum(p.base_price * p.stock for p in products)
+        reserved_value = sum(p.price * p.reserved_stock for p in products)
+        available_value = total_stock_value - reserved_value
+        
+        stats = {
+            'total_products': len(products),
+            'total_stock_value': total_stock_value,
+            'total_stock_cost': total_stock_cost,
+            'potential_profit': total_stock_value - total_stock_cost,
+            'reserved_value': reserved_value,
+            'available_value': available_value,
+            'low_stock_count': sum(1 for p in products if p.stock <= p.low_stock_threshold),
+            'out_of_stock_count': sum(1 for p in products if p.stock == 0)
+        }
+        
+        return render_template('seller_inventory.html', 
+                             products=products, 
+                             logs=logs,
+                             stats=stats)
+    except Exception as e:
+        logger.error(f"Inventory error: {e}")
+        flash('Error loading inventory.', 'danger')
+        return redirect(url_for('seller_dashboard'))
+
+@app.route('/seller/restock/<int:id>', methods=['POST'])
+@role_required('seller')
+def restock_product(id):
+    try:
+        product = Product.query.get_or_404(id)
+        
+        if product.seller_id != session['user_id']:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        quantity = int(request.form.get('quantity', 0))
+        if quantity <= 0:
+            flash('Invalid quantity.', 'danger')
+            return redirect(url_for('seller_inventory'))
+        
+        previous_stock = product.stock
+        product.stock += quantity
+        db.session.commit()
+        
+        log_inventory_change(product.id, session['user_id'], previous_stock, product.stock, 'restock')
+        
+        flash(f'Added {quantity} units to {product.name}', 'success')
+    except Exception as e:
+        logger.error(f"Restock error: {e}")
+        flash('Error restocking product.', 'danger')
+    
+    return redirect(url_for('seller_inventory'))
+
+# ===== CUSTOMER MANAGEMENT =====
+
+@app.route('/seller/customers')
+@role_required('seller')
+def customer_list():
+    try:
+        seller = User.query.get(session['user_id'])
+        customers = Customer.query.filter_by(seller_id=seller.id).order_by(Customer.total_purchases.desc()).all()
+        
+        # Get customer statistics
+        total_customers = len(customers)
+        total_revenue = sum(c.total_purchases for c in customers)
+        avg_purchase = total_revenue / total_customers if total_customers > 0 else 0
+        
+        stats = {
+            'total_customers': total_customers,
+            'total_revenue': total_revenue,
+            'avg_purchase': avg_purchase,
+            'repeat_customers': sum(1 for c in customers if c.purchase_count > 1)
+        }
+        
+        return render_template('customer_list.html', customers=customers, stats=stats)
+    except Exception as e:
+        logger.error(f"Customer list error: {e}")
+        flash('Error loading customers.', 'danger')
+        return redirect(url_for('seller_dashboard'))
+
+@app.route('/seller/customer/<int:id>')
+@role_required('seller')
+def customer_detail(id):
+    try:
+        customer = Customer.query.get_or_404(id)
+        
+        if customer.seller_id != session['user_id']:
+            flash('Access denied.', 'danger')
+            return redirect(url_for('customer_list'))
+        
+        # Get purchase history
+        purchases = Sale.query.filter_by(seller_id=session['user_id'], customer_id=customer.id).order_by(Sale.sale_date.desc()).all()
+        
+        return render_template('customer_detail.html', customer=customer, purchases=purchases)
+    except Exception as e:
+        logger.error(f"Customer detail error: {e}")
+        flash('Error loading customer details.', 'danger')
+        return redirect(url_for('customer_list'))
+
+@app.route('/seller/customer/add', methods=['POST'])
+@role_required('seller')
+def add_customer():
+    try:
+        seller_id = session['user_id']
+        name = request.form.get('name')
+        phone = request.form.get('phone')
+        whatsapp = request.form.get('whatsapp', phone)
+        email = request.form.get('email')
+        address = request.form.get('address')
+        
+        customer = Customer(
+            seller_id=seller_id,
+            name=name,
+            phone=phone,
+            whatsapp=whatsapp,
+            email=email,
+            address=address
+        )
+        
+        db.session.add(customer)
+        db.session.commit()
+        
+        flash('Customer added successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Add customer error: {e}")
+        flash('Error adding customer.', 'danger')
+    
+    return redirect(url_for('customer_list'))
+
+# ===== SALES REPORTS =====
+
+@app.route('/seller/sales')
+@role_required('seller')
+def sales_report():
+    try:
+        seller = User.query.get(session['user_id'])
+        
+        period = request.args.get('period', 'month')
+        today = datetime.now().date()
+        
+        if period == 'day':
+            start_date = today
+            group_by = 'hour'
+        elif period == 'week':
+            start_date = today - timedelta(days=today.weekday())
+            group_by = 'day'
+        elif period == 'month':
+            start_date = today.replace(day=1)
+            group_by = 'day'
+        else:  # year
+            start_date = today.replace(month=1, day=1)
+            group_by = 'month'
+        
+        # Get sales for the period
+        sales = Sale.query.filter(
+            Sale.seller_id == seller.id,
+            Sale.status == 'completed',
+            Sale.sale_date >= start_date
+        ).order_by(Sale.sale_date).all()
+        
+        # Calculate totals
+        total_sales = sum(s.total_price for s in sales)
+        total_orders = len(sales)
+        avg_order_value = total_sales / total_orders if total_orders > 0 else 0
+        total_profit = sum(s.profit for s in sales if s.profit) if sales else 0
+        
+        # Sales by product
+        from sqlalchemy import func
+        sales_by_product = db.session.query(
+            Product.name, 
+            func.sum(Sale.quantity).label('quantity'),
+            func.sum(Sale.total_price).label('total'),
+            func.count(Sale.id).label('count')
+        ).join(Sale, Sale.product_id == Product.id).filter(
+            Sale.seller_id == seller.id,
+            Sale.status == 'completed',
+            Sale.sale_date >= start_date
+        ).group_by(Product.id).order_by(func.sum(Sale.total_price).desc()).all()
+        
+        # Sales by day
+        if group_by == 'hour':
+            sales_by_day = db.session.query(
+                func.date_trunc('hour', Sale.sale_date).label('date'),
+                func.sum(Sale.total_price).label('total'),
+                func.count(Sale.id).label('count')
+            ).filter(
+                Sale.seller_id == seller.id,
+                Sale.status == 'completed',
+                Sale.sale_date >= start_date
+            ).group_by(func.date_trunc('hour', Sale.sale_date)).order_by('date').all()
+        else:
+            sales_by_day = db.session.query(
+                func.date(Sale.sale_date).label('date'),
+                func.sum(Sale.total_price).label('total'),
+                func.count(Sale.id).label('count')
+            ).filter(
+                Sale.seller_id == seller.id,
+                Sale.status == 'completed',
+                Sale.sale_date >= start_date
+            ).group_by(func.date(Sale.sale_date)).order_by('date').all()
+        
+        # Get top customers
+        top_customers = db.session.query(
+            Customer.name,
+            Customer.phone,
+            func.sum(Sale.total_price).label('total'),
+            func.count(Sale.id).label('orders')
+        ).join(Sale, Sale.customer_id == Customer.id).filter(
+            Sale.seller_id == seller.id,
+            Sale.status == 'completed',
+            Sale.sale_date >= start_date
+        ).group_by(Customer.id).order_by(func.sum(Sale.total_price).desc()).limit(5).all()
+        
+        stats = {
+            'total_sales': total_sales,
+            'total_orders': total_orders,
+            'avg_order_value': avg_order_value,
+            'total_profit': total_profit,
+            'profit_margin': (total_profit / total_sales * 100) if total_sales > 0 else 0
+        }
+        
+        return render_template('sales_report.html',
+                             period=period,
+                             stats=stats,
+                             sales_by_product=sales_by_product,
+                             sales_by_day=sales_by_day,
+                             top_customers=top_customers)
+    except Exception as e:
+        logger.error(f"Sales report error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        flash('Error loading sales report.', 'danger')
+        return redirect(url_for('seller_dashboard'))
+
+# ===== NOTIFICATION ROUTES =====
+
+@app.route('/notifications')
+@login_required
+def notifications():
+    try:
+        user_id = session['user_id']
+        notifications = Notification.query.filter_by(user_id=user_id).order_by(Notification.created_at.desc()).all()
+        
+        # Mark all as read
+        for n in notifications:
+            n.is_read = True
+        db.session.commit()
+        
+        return render_template('notifications.html', notifications=notifications)
+    except Exception as e:
+        logger.error(f"Notifications error: {e}")
+        flash('Error loading notifications.', 'danger')
+        return redirect(url_for('index'))
+
+@app.route('/api/notifications')
+@login_required
+def get_notifications():
+    try:
+        user_id = session['user_id']
+        unread_count = Notification.query.filter_by(user_id=user_id, is_read=False).count()
+        latest = Notification.query.filter_by(user_id=user_id, is_read=False).order_by(Notification.created_at.desc()).first()
+        
+        return jsonify({
+            'unread_count': unread_count,
+            'latest': {
+                'id': latest.id,
+                'title': latest.title,
+                'message': latest.message,
+                'type': latest.type,
+                'created_at': latest.created_at.isoformat()
+            } if latest else None
+        })
+    except Exception as e:
+        logger.error(f"Notifications API error: {e}")
+        return jsonify({'unread_count': 0, 'latest': None})
+
+@app.route('/api/notifications/<int:id>/read', methods=['POST'])
+@login_required
+def mark_notification_read(id):
+    try:
+        notification = Notification.query.get_or_404(id)
+        if notification.user_id != session['user_id']:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        notification.is_read = True
+        db.session.commit()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Mark notification read error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# ===== POS SYSTEM =====
+
+@app.route('/seller/pos')
+@role_required('seller')
+def pos_dashboard():
+    try:
+        seller = User.query.get(session['user_id'])
+        products = Product.query.filter_by(seller_id=seller.id, is_active=True).filter(Product.stock > 0).all()
+        
+        today = datetime.now().date()
+        today_sales = OfflineSale.query.filter(
+            OfflineSale.seller_id == seller.id,
+            func.date(OfflineSale.created_at) == today
+        ).order_by(OfflineSale.created_at.desc()).all()
+        
+        today_total = sum(sale.total for sale in today_sales)
+        
+        return render_template('pos_dashboard.html', 
+                             products=products,
+                             today_sales=today_sales,
+                             today_total=today_total)
+    except Exception as e:
+        logger.error(f"POS dashboard error: {e}")
+        flash('Error loading POS.', 'danger')
+        return redirect(url_for('seller_dashboard'))
+
+@app.route('/seller/pos/checkout', methods=['POST'])
+@role_required('seller')
+def pos_checkout():
+    try:
+        seller = User.query.get(session['user_id'])
+        
+        data = request.get_json()
+        cart = data.get('cart', [])
+        customer_name = data.get('customer_name', '')
+        customer_phone = data.get('customer_phone', '')
+        customer_whatsapp = data.get('customer_whatsapp', customer_phone)
+        payment_method = data.get('payment_method', 'cash')
+        discount = float(data.get('discount', 0))
+        
+        if not cart:
+            return jsonify({'error': 'Cart is empty'}), 400
+        
+        items = []
+        subtotal = 0
+        
+        for item in cart:
+            product = Product.query.get(item['product_id'])
+            if not product or product.seller_id != seller.id:
+                return jsonify({'error': f'Invalid product: {item["product_id"]}'}), 400
+            
+            if product.stock < item['quantity']:
+                return jsonify({'error': f'Insufficient stock for {product.name}'}), 400
+            
+            previous_stock = product.stock
+            product.stock -= item['quantity']
+            
+            item_total = product.price * item['quantity']
+            subtotal += item_total
+            
+            items.append({
+                'product_id': product.id,
+                'product_name': product.name,
+                'quantity': item['quantity'],
+                'unit_price': product.price,
+                'total': item_total
+            })
+            
+            log_inventory_change(product.id, seller.id, previous_stock, product.stock, 'pos_sale')
+            
+            # Create sale record
+            sale = Sale(
+                seller_id=seller.id,
+                product_id=product.id,
+                quantity=item['quantity'],
+                unit_price=product.price,
+                total_price=item_total,
+                profit=(product.price - product.base_price) * item['quantity'],
+                sale_type='pos',
+                status='completed',
+                payment_method=payment_method
+            )
+            db.session.add(sale)
+        
+        total = subtotal - discount
+        receipt_number = generate_receipt_number()
+        
+        offline_sale = OfflineSale(
+            seller_id=seller.id,
+            customer_name=customer_name,
+            customer_phone=customer_phone,
+            items=items,
+            subtotal=subtotal,
+            discount=discount,
+            total=total,
+            payment_method=payment_method,
+            receipt_number=receipt_number
+        )
+        db.session.add(offline_sale)
+        
+        # Update or create customer
+        if customer_name:
+            customer = Customer.query.filter_by(seller_id=seller.id, phone=customer_phone).first()
+            if customer:
+                customer.total_purchases += total
+                customer.purchase_count += 1
+                customer.last_purchase = datetime.utcnow()
+                if customer_whatsapp:
+                    customer.whatsapp = customer_whatsapp
+            else:
+                customer = Customer(
+                    seller_id=seller.id,
+                    name=customer_name,
+                    phone=customer_phone,
+                    whatsapp=customer_whatsapp,
+                    total_purchases=total,
+                    purchase_count=1,
+                    last_purchase=datetime.utcnow()
+                )
+                db.session.add(customer)
+            
+            # Link sale to customer
+            for sale in Sale.query.filter_by(seller_id=seller.id).order_by(Sale.sale_date.desc()).limit(len(items)).all():
+                if not sale.customer_id:
+                    sale.customer_id = customer.id
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'receipt_number': receipt_number,
+            'total': total
+        })
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"POS checkout error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/seller/pos/receipt/<receipt_number>')
+@role_required('seller')
+def pos_receipt(receipt_number):
+    try:
+        sale = OfflineSale.query.filter_by(receipt_number=receipt_number).first_or_404()
+        
+        if sale.seller_id != session['user_id']:
+            flash('Access denied.', 'danger')
+            return redirect(url_for('pos_dashboard'))
+        
+        return render_template('pos_receipt.html', sale=sale)
+    except Exception as e:
+        logger.error(f"Receipt error: {e}")
+        flash('Receipt not found.', 'danger')
+        return redirect(url_for('pos_dashboard'))
+
 # ===== CHAT ROUTES =====
 
 @app.route('/chat/<int:receiver_id>')
@@ -1853,6 +2303,15 @@ def send_message():
         
         db.session.add(msg)
         db.session.commit()
+        
+        # Create notification for receiver
+        sender = User.query.get(session['user_id'])
+        create_notification(
+            user_id=receiver_id,
+            title=f"New Message from {sender.username}",
+            message=message[:100] + ('...' if len(message) > 100 else ''),
+            type='message'
+        )
         
         return redirect(url_for('chat_with_user', receiver_id=receiver_id, product_id=product_id))
     except Exception as e:
@@ -2048,6 +2507,14 @@ def review_user(user_id):
             db.session.add(review)
             db.session.commit()
             
+            # Create notification for reviewed user
+            create_notification(
+                user_id=user_id,
+                title=f"New Review from {session['username']}",
+                message=f"Rating: {request.form['rating']} stars - {request.form['comment'][:100]}...",
+                type='review'
+            )
+            
             flash('Review submitted successfully!', 'success')
             return redirect(url_for('community'))
         
@@ -2080,7 +2547,7 @@ def ai_assistant():
                     order_list = []
                     for order in recent_orders:
                         items = [f"{item.quantity}x {item.product.name}" for item in order.items]
-                        order_list.append(f"Order #{order.id}: {', '.join(items)}")
+                        order_list.append(f"Order #{order.order_number}: {', '.join(items)}")
                     context += f"They recently ordered: {'; '.join(order_list)}. "
                 
                 product_count = Product.query.filter_by(is_active=True).count()
@@ -2148,26 +2615,6 @@ def ai_quick_question():
         logger.error(f"AI Quick Error: {e}")
         return jsonify({'response': 'AI service temporarily unavailable.'})
 
-# ===== NOTIFICATION API =====
-
-@app.route('/api/notifications')
-@login_required
-def get_notifications():
-    try:
-        user_id = session['user_id']
-        unread_count = Message.query.filter_by(receiver_id=user_id, is_read=False).count()
-        latest_message = Message.query.filter_by(receiver_id=user_id, is_read=False)\
-                                     .order_by(Message.created_at.desc()).first()
-        
-        return jsonify({
-            'unread_count': unread_count,
-            'latest_message': latest_message.message if latest_message else None,
-            'sender': latest_message.sender.username if latest_message else None
-        })
-    except Exception as e:
-        logger.error(f"Notifications error: {e}")
-        return jsonify({'unread_count': 0, 'latest_message': None, 'sender': None})
-
 # ===== ADMIN DASHBOARD =====
 
 @app.route('/admin/dashboard')
@@ -2178,19 +2625,21 @@ def admin_dashboard():
         products = Product.query.all()
         orders = Order.query.order_by(Order.created_at.desc()).limit(50).all()
         
+        # Statistics
         total_users = len(users)
         total_sellers = len([u for u in users if u.role == 'seller'])
         total_riders = len([u for u in users if u.role == 'rider'])
         total_buyers = len([u for u in users if u.role == 'buyer'])
+        
         total_products = len(products)
         total_orders = Order.query.count()
         pending_orders = Order.query.filter_by(status='pending').count()
+        completed_orders = Order.query.filter_by(status='delivered').count()
         
-        total_revenue = 0
-        try:
-            total_revenue = db.session.query(db.func.coalesce(db.func.sum(Order.total), 0)).scalar() or 0
-        except:
-            pass
+        # Revenue stats
+        total_revenue = db.session.query(db.func.coalesce(db.func.sum(Order.total), 0)).filter(Order.status == 'delivered').scalar() or 0
+        total_platform_fees = db.session.query(db.func.coalesce(db.func.sum(Order.platform_fee), 0)).filter(Order.status == 'delivered').scalar() or 0
+        total_rider_fees = db.session.query(db.func.coalesce(db.func.sum(Order.rider_fee), 0)).filter(Order.status == 'delivered').scalar() or 0
         
         stats = {
             'total_users': total_users,
@@ -2200,7 +2649,10 @@ def admin_dashboard():
             'total_products': total_products,
             'total_orders': total_orders,
             'pending_orders': pending_orders,
-            'total_revenue': float(total_revenue)
+            'completed_orders': completed_orders,
+            'total_revenue': float(total_revenue),
+            'total_platform_fees': float(total_platform_fees),
+            'total_rider_fees': float(total_rider_fees)
         }
         
         return render_template('admin_dashboard.html', 
@@ -2466,64 +2918,6 @@ def end_video_call(call_id):
         logger.error(f"End video call error: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/video-call/<int:call_id>/ai-toggle', methods=['POST'])
-@login_required
-def toggle_video_call_ai(call_id):
-    try:
-        call = VideoCall.query.get_or_404(call_id)
-        
-        if call.initiator_id != session['user_id'] and call.receiver_id != session['user_id']:
-            return jsonify({'error': 'Unauthorized'}), 403
-        
-        data = request.get_json()
-        call.ai_assistant_active = data.get('active', not call.ai_assistant_active)
-        db.session.commit()
-        
-        socketio.emit('ai_toggled', {
-            'call_id': call_id,
-            'active': call.ai_assistant_active
-        }, room=f'call_{call_id}')
-        
-        return jsonify({'success': True, 'active': call.ai_assistant_active})
-    except Exception as e:
-        logger.error(f"Toggle AI error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/video-call/<int:call_id>/message', methods=['POST'])
-@login_required
-def send_video_call_message(call_id):
-    try:
-        call = VideoCall.query.get_or_404(call_id)
-        
-        if call.initiator_id != session['user_id'] and call.receiver_id != session['user_id']:
-            return jsonify({'error': 'Unauthorized'}), 403
-        
-        data = request.get_json()
-        message = data.get('message')
-        is_ai = data.get('is_ai', False)
-        
-        call_message = VideoCallMessage(
-            call_id=call_id,
-            sender_id=session['user_id'],
-            message=message,
-            is_ai=is_ai
-        )
-        db.session.add(call_message)
-        db.session.commit()
-        
-        socketio.emit('call_message', {
-            'call_id': call_id,
-            'message': message,
-            'sender': session['username'] if not is_ai else 'AI Assistant',
-            'is_ai': is_ai,
-            'timestamp': datetime.utcnow().isoformat()
-        }, room=f'call_{call_id}')
-        
-        return jsonify({'success': True})
-    except Exception as e:
-        logger.error(f"Send video call message error: {e}")
-        return jsonify({'error': str(e)}), 500
-
 # ===== SOCKETIO EVENTS =====
 
 @socketio.on('connect')
@@ -2670,6 +3064,7 @@ def init_db():
                         category='Fruits',
                         image_url='https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400',
                         stock=50,
+                        reserved_stock=0,
                         sku='FRUIT-001',
                         seller_id=seller.id,
                         video_call_enabled=True,
@@ -2683,6 +3078,7 @@ def init_db():
                         category='Fruits',
                         image_url='https://images.unsplash.com/photo-1603833665858-e61d17a86224?w=400',
                         stock=100,
+                        reserved_stock=0,
                         sku='FRUIT-002',
                         seller_id=seller.id,
                         video_call_enabled=True,
@@ -2696,33 +3092,8 @@ def init_db():
                         category='Vegetables',
                         image_url='https://images.unsplash.com/photo-1546094096-0df4bcaaa337?w=400',
                         stock=75,
+                        reserved_stock=0,
                         sku='VEG-001',
-                        seller_id=seller.id,
-                        video_call_enabled=True,
-                        is_active=True
-                    ),
-                    Product(
-                        name='Green Lettuce',
-                        description='Fresh crispy lettuce for healthy meals',
-                        base_price=2.99,
-                        price=3.59,
-                        category='Vegetables',
-                        image_url='https://images.unsplash.com/photo-1622206151226-18ca2c9ab4a1?w=400',
-                        stock=60,
-                        sku='VEG-002',
-                        seller_id=seller.id,
-                        video_call_enabled=True,
-                        is_active=True
-                    ),
-                    Product(
-                        name='Orange Juice',
-                        description='Fresh squeezed orange juice, no preservatives',
-                        base_price=5.99,
-                        price=7.19,
-                        category='Beverages',
-                        image_url='https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=400',
-                        stock=40,
-                        sku='BEV-001',
                         seller_id=seller.id,
                         video_call_enabled=True,
                         is_active=True
