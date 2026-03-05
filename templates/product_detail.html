@@ -5,7 +5,7 @@
 {% block content %}
 <div class="row">
     <div class="col-md-6">
-        <!-- Main Product Image -->
+        <!-- Product Image Gallery -->
         <div id="productCarousel" class="carousel slide mb-3" data-bs-ride="carousel">
             <div class="carousel-inner rounded-3 shadow">
                 <div class="carousel-item active">
@@ -21,10 +21,12 @@
             </div>
             {% if product.additional_images and product.additional_images|length > 0 %}
             <button class="carousel-control-prev" type="button" data-bs-target="#productCarousel" data-bs-slide="prev">
-                <span class="carousel-control-prev-icon"></span>
+                <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                <span class="visually-hidden">Previous</span>
             </button>
             <button class="carousel-control-next" type="button" data-bs-target="#productCarousel" data-bs-slide="next">
-                <span class="carousel-control-next-icon"></span>
+                <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                <span class="visually-hidden">Next</span>
             </button>
             {% endif %}
         </div>
@@ -103,7 +105,7 @@
                     </a>
                     {% endif %}
                     {% if product.video_call_enabled and seller.is_online %}
-                    <button class="btn btn-sm btn-outline-info" onclick="initiateVideoCall()" title="Video Call">
+                    <button class="btn btn-sm btn-outline-info" onclick="initiateVideoCall({{ seller.id }}, {{ product.id }})" title="Video Call">
                         <i class="bi bi-camera-video"></i>
                     </button>
                     {% endif %}
@@ -219,7 +221,7 @@
                             <label class="form-label">Select Rider</label>
                             <select name="rider_id" class="form-select" required>
                                 <option value="">Choose a rider...</option>
-                                {% if available_riders %}
+                                {% if available_riders and available_riders|length > 0 %}
                                     {% for rider in available_riders %}
                                     <option value="{{ rider.id }}">
                                         {{ rider.username }} - {{ rider.phone_number }} 
@@ -227,7 +229,7 @@
                                     </option>
                                     {% endfor %}
                                 {% else %}
-                                    <option value="" disabled>No riders available</option>
+                                    <option value="" disabled>No riders available online</option>
                                 {% endif %}
                             </select>
                         </div>
@@ -280,7 +282,7 @@
         </a>
         {% endif %}
         
-        <!-- Share Button -->
+        <!-- Share and Print Buttons -->
         <div class="d-flex justify-content-end mt-3">
             <button class="btn btn-outline-secondary btn-sm" onclick="shareProduct()">
                 <i class="bi bi-share"></i> Share
@@ -338,16 +340,15 @@ function jumpToSlide(index) {
     }
 }
 
-function initiateVideoCall() {
-    {% if product.video_call_enabled and seller and seller.id %}
+function initiateVideoCall(sellerId, productId) {
     fetch('/video-call/initiate', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-            receiver_id: {{ seller.id }},
-            product_id: {{ product.id }}
+            receiver_id: sellerId,
+            product_id: productId
         })
     })
     .then(response => response.json())
@@ -361,9 +362,6 @@ function initiateVideoCall() {
     .catch(error => {
         alert('Error initiating video call');
     });
-    {% else %}
-    alert('Video call not available for this product');
-    {% endif %}
 }
 
 function askQuestion() {
