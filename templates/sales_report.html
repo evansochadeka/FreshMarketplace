@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}Sales Report - Seller Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar -->
+        <nav class="col-md-2 d-md-block bg-light sidebar">
+            <div class="position-sticky pt-3">
+                <ul class="nav flex-column">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('seller_dashboard') }}">
+                            <i class="bi bi-speedometer2"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('seller_products') }}">
+                            <i class="bi bi-box"></i> My Products
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('seller_inventory') }}">
+                            <i class="bi bi-clipboard-data"></i> Inventory
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('seller_orders') }}">
+                            <i class="bi bi-truck"></i> Orders
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('seller_inquiries') }}">
+                            <i class="bi bi-question-circle"></i> Inquiries
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('customer_list') }}">
+                            <i class="bi bi-people"></i> Customers
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="{{ url_for('sales_report') }}">
+                            <i class="bi bi-graph-up"></i> Sales Reports
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('pos_dashboard') }}">
+                            <i class="bi bi-calculator"></i> POS System
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </nav>
+
+        <!-- Main content -->
+        <main class="col-md-10 ms-sm-auto px-md-4">
+            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                <h1 class="h2">Sales Reports</h1>
+                <div class="btn-toolbar mb-2 mb-md-0">
+                    <div class="btn-group me-2">
+                        <a href="?period=day" class="btn btn-sm btn-outline-primary {% if period == 'day' %}active{% endif %}">Day</a>
+                        <a href="?period=week" class="btn btn-sm btn-outline-primary {% if period == 'week' %}active{% endif %}">Week</a>
+                        <a href="?period=month" class="btn btn-sm btn-outline-primary {% if period == 'month' %}active{% endif %}">Month</a>
+                        <a href="?period=year" class="btn btn-sm btn-outline-primary {% if period == 'year' %}active{% endif %}">Year</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Summary Cards -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body">
+                            <h5>Total Sales</h5>
+                            <h3>Kes {{ "%.2f"|format(stats.total_sales) }}</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-info text-white">
+                        <div class="card-body">
+                            <h5>Total Orders</h5>
+                            <h3>{{ stats.total_orders }}</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body">
+                            <h5>Average Order</h5>
+                            <h3>Kes {{ "%.2f"|format(stats.avg_order_value) }}</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning text-dark">
+                        <div class="card-body">
+                            <h5>Total Profit</h5>
+                            <h3>Kes {{ "%.2f"|format(stats.total_profit) }}</h3>
+                            <small>Margin: {{ "%.1f"|format(stats.profit_margin) }}%</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sales by Product -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5><i class="bi bi-bar-chart"></i> Sales by Product</h5>
+                </div>
+                <div class="card-body">
+                    {% if sales_by_product %}
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Product</th>
+                                    <th>Quantity Sold</th>
+                                    <th>Orders</th>
+                                    <th>Revenue</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for product in sales_by_product %}
+                                <tr>
+                                    <td>{{ product.name }}</td>
+                                    <td>{{ product.quantity }}</td>
+                                    <td>{{ product.count }}</td>
+                                    <td>Kes {{ "%.2f"|format(product.total) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center py-3">No sales data for this period</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Sales by Day -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5><i class="bi bi-calendar"></i> Sales by Day</h5>
+                </div>
+                <div class="card-body">
+                    {% if sales_by_day %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Orders</th>
+                                    <th>Revenue</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for day in sales_by_day %}
+                                <tr>
+                                    <td>{{ day.date }}</td>
+                                    <td>{{ day.count }}</td>
+                                    <td>Kes {{ "%.2f"|format(day.total) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center py-3">No sales data for this period</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Top Customers -->
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="bi bi-trophy"></i> Top Customers</h5>
+                </div>
+                <div class="card-body">
+                    {% if top_customers %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Customer</th>
+                                    <th>Phone</th>
+                                    <th>Orders</th>
+                                    <th>Total Spent</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for customer in top_customers %}
+                                <tr>
+                                    <td>{{ customer.name }}</td>
+                                    <td>{{ customer.phone }}</td>
+                                    <td>{{ customer.orders }}</td>
+                                    <td>Kes {{ "%.2f"|format(customer.total) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted text-center py-3">No customer data for this period</p>
+                    {% endif %}
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+{% endblock %}
