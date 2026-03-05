@@ -1,70 +1,122 @@
 {% extends "base.html" %}
 
+{% block title %}Checkout - Fresh Marketplace{% endblock %}
+
 {% block content %}
 <h1 class="mb-4">Checkout</h1>
 
 <div class="row">
     <div class="col-md-8">
+        <!-- Order Items -->
         <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-bag"></i> Order Items</h5>
+            </div>
             <div class="card-body">
-                <h5 class="card-title">Order Items</h5>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Product</th>
-                            <th>Price</th>
-                            <th>Quantity</th>
-                            <th>Subtotal</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in products %}
-                        <tr>
-                            <td>{{ item.product.name }}</td>
-                            <td>${{ "%.2f"|format(item.product.price) }}</td>
-                            <td>{{ item.quantity }}</td>
-                            <td>${{ "%.2f"|format(item.product.price * item.quantity) }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Price</th>
+                                <th>Quantity</th>
+                                <th>Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in products %}
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <img src="{{ item.product.image_url }}" width="40" height="40" style="object-fit: cover;" class="rounded me-2">
+                                        <div>
+                                            <h6 class="mb-0">{{ item.product.name }}</h6>
+                                            <small class="text-muted">{{ item.product.category }}</small>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>Kes {{ "%.2f"|format(item.product.price) }}</td>
+                                <td>{{ item.quantity }}</td>
+                                <td>Kes {{ "%.2f"|format(item.product.price * item.quantity) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
+        <!-- Delivery Information -->
         <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-truck"></i> Delivery Information</h5>
+            </div>
             <div class="card-body">
-                <h5 class="card-title">Delivery Information</h5>
-                <form method="POST">
+                <form method="POST" id="checkoutForm">
                     <div class="mb-3">
                         <label class="form-label">Delivery Address</label>
-                        <textarea name="delivery_address" class="form-control" rows="3" required></textarea>
+                        <textarea name="delivery_address" class="form-control" rows="3" required placeholder="Enter your full delivery address"></textarea>
                     </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Payment Method</label>
+                        <select name="payment_method" class="form-select" required>
+                            <option value="cash">Cash on Delivery</option>
+                            <option value="mpesa">M-PESA</option>
+                            <option value="card">Credit/Debit Card</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Additional Notes (Optional)</label>
+                        <textarea name="notes" class="form-control" rows="2" placeholder="Any special instructions for delivery?"></textarea>
+                    </div>
+                    
                     <div class="alert alert-info">
-                        <strong>Note:</strong> A rider will be automatically assigned to deliver your order based on proximity.
+                        <i class="bi bi-info-circle"></i> 
+                        By placing your order, you agree to our terms and conditions.
                     </div>
-                    <button type="submit" class="btn btn-success btn-lg w-100">Place Order</button>
+                    
+                    <button type="submit" class="btn btn-success btn-lg w-100">
+                        <i class="bi bi-check-circle"></i> Place Order
+                    </button>
                 </form>
             </div>
         </div>
     </div>
 
     <div class="col-md-4">
-        <div class="card">
+        <!-- Order Summary -->
+        <div class="card sticky-top" style="top: 20px;">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-receipt"></i> Order Summary</h5>
+            </div>
             <div class="card-body">
-                <h5 class="card-title">Order Summary</h5>
+                <table class="table table-sm">
+                    <tr>
+                        <td>Subtotal:</td>
+                        <td class="text-end">Kes {{ "%.2f"|format(subtotal) }}</td>
+                    </tr>
+                    <tr>
+                        <td>Rider Fee (10%):</td>
+                        <td class="text-end">Kes {{ "%.2f"|format(rider_fee) }}</td>
+                    </tr>
+                    <tr>
+                        <td>Platform Fee (10%):</td>
+                        <td class="text-end">Kes {{ "%.2f"|format(platform_fee) }}</td>
+                    </tr>
+                    <tr class="fw-bold">
+                        <td>Total:</td>
+                        <td class="text-end text-success fs-5">Kes {{ "%.2f"|format(total) }}</td>
+                    </tr>
+                </table>
+                
                 <hr>
-                <div class="d-flex justify-content-between mb-2">
-                    <span>Subtotal:</span>
-                    <span>${{ "%.2f"|format(total) }}</span>
-                </div>
-                <div class="d-flex justify-content-between mb-2">
-                    <span>Delivery:</span>
-                    <span>$5.00</span>
-                </div>
-                <hr>
-                <div class="d-flex justify-content-between">
-                    <strong>Total:</strong>
-                    <strong class="h4 text-success">${{ "%.2f"|format(total + 5) }}</strong>
+                
+                <div class="d-grid">
+                    <a href="{{ url_for('cart') }}" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left"></i> Back to Cart
+                    </a>
                 </div>
             </div>
         </div>
