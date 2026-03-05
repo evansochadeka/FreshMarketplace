@@ -85,7 +85,7 @@ class User(db.Model):
     received_inquiries = db.relationship('ProductInquiry', foreign_keys='ProductInquiry.seller_id', back_populates='seller', lazy=True)
     rider_recommendations = db.relationship('RiderRecommendation', foreign_keys='RiderRecommendation.buyer_id', back_populates='buyer', lazy=True)
     received_recommendations = db.relationship('RiderRecommendation', foreign_keys='RiderRecommendation.seller_id', back_populates='seller', lazy=True)
-    notifications = db.relationship('Notification', foreign_keys='Notification.user_id', back_populates='user', lazy=True)
+    notifications = db.relationship('Notification', back_populates='user', lazy=True)
 
 class Product(db.Model):
     __tablename__ = 'product'
@@ -98,7 +98,7 @@ class Product(db.Model):
     image_url = db.Column(db.String(500))
     additional_images = db.Column(db.JSON, default=list)
     stock = db.Column(db.Integer, default=0)
-    reserved_stock = db.Column(db.Integer, default=0)  # Stock that's in pending orders
+    reserved_stock = db.Column(db.Integer, default=0)
     sku = db.Column(db.String(50), unique=True)
     barcode = db.Column(db.String(100))
     seller_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -126,12 +126,12 @@ class Order(db.Model):
     subtotal = db.Column(db.Float, nullable=False, default=0)
     rider_fee = db.Column(db.Float, default=0)
     platform_fee = db.Column(db.Float, default=0)
-    status = db.Column(db.String(20), default='pending')  # pending, confirmed, processing, shipped, delivered, cancelled
+    status = db.Column(db.String(20), default='pending')
     delivery_address = db.Column(db.String(200))
     delivery_lat = db.Column(db.Float)
     delivery_lng = db.Column(db.Float)
     payment_method = db.Column(db.String(50), default='cash')
-    payment_status = db.Column(db.String(20), default='pending')  # pending, paid, failed
+    payment_status = db.Column(db.String(20), default='pending')
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     confirmed_at = db.Column(db.DateTime)
@@ -187,7 +187,7 @@ class Customer(db.Model):
     __tablename__ = 'customer'
     id = db.Column(db.Integer, primary_key=True)
     seller_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))  # If they have an account
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     name = db.Column(db.String(100), nullable=False)
     phone = db.Column(db.String(20))
     whatsapp = db.Column(db.String(20))
@@ -210,7 +210,7 @@ class Notification(db.Model):
     order_id = db.Column(db.Integer, db.ForeignKey('order.id'))
     title = db.Column(db.String(200), nullable=False)
     message = db.Column(db.Text, nullable=False)
-    type = db.Column(db.String(50), default='info')  # order, inquiry, recommendation, system
+    type = db.Column(db.String(50), default='info')
     is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
@@ -444,17 +444,16 @@ def log_inventory_change(product_id, seller_id, previous_stock, new_stock, reaso
         )
         db.session.add(log)
         db.session.commit()
-    except:
+    except Exception as e:
+        logger.error(f"Inventory log error: {e}")
         db.session.rollback()
 
 def generate_order_number():
-    """Generate unique order number"""
     date_part = datetime.now().strftime('%Y%m%d')
     random_part = uuid.uuid4().hex[:6].upper()
     return f"ORD-{date_part}-{random_part}"
 
 def create_notification(user_id, title, message, type='info', order_id=None):
-    """Create a notification for a user"""
     try:
         notification = Notification(
             user_id=user_id,
@@ -466,7 +465,6 @@ def create_notification(user_id, title, message, type='info', order_id=None):
         db.session.add(notification)
         db.session.commit()
         
-        # Emit real-time notification via SocketIO
         socketio.emit('notification', {
             'id': notification.id,
             'title': title,
@@ -841,7 +839,6 @@ def cart():
         for product_id, quantity in cart_items.items():
             product = Product.query.get(int(product_id))
             if product and product.is_active:
-                # Check available stock (including reserved)
                 available = product.stock - product.reserved_stock
                 if quantity > available:
                     quantity = available
@@ -881,19 +878,13 @@ def add_to_cart(id):
             flash('This product is no longer available.', 'warning')
             return redirect(url_for('products'))
         
-        # Check available stock (excluding reserved)
         available = product.stock - product.reserved_stock
         if available < quantity:
             flash(f'Sorry, only {available} units available.', 'warning')
             return redirect(url_for('product_detail', id=id))
         
         cart = session.get('cart', {})
-        current = cart.get(str(id), 0)
-        if current + quantity > available:
-            flash(f'Cannot add {quantity} more. Only {available - current} available.', 'warning')
-            return redirect(url_for('cart'))
-        
-        cart[str(id)] = current + quantity
+        cart[str(id)] = cart.get(str(id), 0) + quantity
         session['cart'] = cart
         flash(f'Added {quantity} x {product.name} to cart!', 'success')
     except Exception as e:
@@ -963,7 +954,6 @@ def checkout():
             order_items = []
             sellers = set()
             
-            # Validate all items and calculate totals
             for product_id, quantity in cart.items():
                 product = Product.query.get(int(product_id))
                 if not product or not product.is_active:
@@ -993,7 +983,6 @@ def checkout():
             platform_fee = subtotal * 0.10
             total = subtotal + rider_fee + platform_fee
             
-            # Create order
             order = Order(
                 order_number=generate_order_number(),
                 user_id=user.id,
@@ -1013,7 +1002,6 @@ def checkout():
             db.session.add(order)
             db.session.flush()
             
-            # Reserve stock
             for item in order_items:
                 product = item['product']
                 product.reserved_stock += item['quantity']
@@ -1037,17 +1025,14 @@ def checkout():
                     order.id
                 )
             
-            # Assign rider if available
             rider = find_nearest_rider(delivery_address)
             if rider:
                 order.rider_id = rider.id
             
             db.session.commit()
             
-            # Clear cart
             session['cart'] = {}
             
-            # Create notification for seller(s)
             for seller_id in sellers:
                 create_notification(
                     user_id=seller_id,
@@ -1057,7 +1042,6 @@ def checkout():
                     order_id=order.id
                 )
             
-            # Notify buyer
             create_notification(
                 user_id=user.id,
                 title=f"Order #{order.order_number} Placed Successfully",
@@ -1153,7 +1137,6 @@ def orders():
 @app.route('/order/<int:id>/confirm', methods=['POST'])
 @role_required('seller')
 def confirm_order(id):
-    """Seller confirms order and prepares for shipping"""
     try:
         order = Order.query.get_or_404(id)
         
@@ -1169,7 +1152,6 @@ def confirm_order(id):
         order.confirmed_at = datetime.utcnow()
         db.session.commit()
         
-        # Notify buyer
         create_notification(
             user_id=order.user_id,
             title=f"Order #{order.order_number} Confirmed",
@@ -1188,22 +1170,18 @@ def confirm_order(id):
 @app.route('/order/<int:id>/cancel', methods=['POST'])
 @login_required
 def cancel_order(id):
-    """Cancel order and release reserved stock"""
     try:
         order = Order.query.get_or_404(id)
         user = User.query.get(session['user_id'])
         
-        # Check permissions (buyer, seller, or admin can cancel)
         if user.role != 'admin' and order.user_id != user.id and order.seller_id != user.id:
             flash('Access denied.', 'danger')
             return redirect(url_for('orders'))
         
-        # Only pending or confirmed orders can be cancelled
         if order.status not in ['pending', 'confirmed']:
             flash('Order cannot be cancelled at this stage.', 'danger')
             return redirect(url_for('order_detail', id=id))
         
-        # Release reserved stock
         for item in order.items:
             product = item.product
             product.reserved_stock -= item.quantity
@@ -1220,9 +1198,7 @@ def cancel_order(id):
         order.cancelled_at = datetime.utcnow()
         db.session.commit()
         
-        # Notify relevant parties
         if user.id == order.user_id:
-            # Buyer cancelled
             if order.seller_id:
                 create_notification(
                     user_id=order.seller_id,
@@ -1232,7 +1208,6 @@ def cancel_order(id):
                     order_id=order.id
                 )
         elif user.id == order.seller_id:
-            # Seller cancelled
             create_notification(
                 user_id=order.user_id,
                 title=f"Order #{order.order_number} Cancelled",
@@ -1256,15 +1231,12 @@ def rider_dashboard():
     try:
         rider = User.query.get(session['user_id'])
         
-        # Get assigned deliveries
         deliveries = Order.query.filter_by(rider_id=rider.id).order_by(Order.created_at.desc()).all()
         
-        # Statistics
         completed = sum(1 for o in deliveries if o.status == 'delivered')
         in_transit = sum(1 for o in deliveries if o.status == 'shipped')
         pending = sum(1 for o in deliveries if o.status == 'confirmed')
         
-        # Available orders for assignment
         available_orders = Order.query.filter(
             Order.rider_id == None,
             Order.status == 'confirmed'
@@ -1290,7 +1262,6 @@ def rider_dashboard():
 @app.route('/rider/accept_order/<int:id>', methods=['POST'])
 @role_required('rider')
 def accept_order(id):
-    """Rider accepts an order for delivery"""
     try:
         order = Order.query.get_or_404(id)
         
@@ -1307,7 +1278,6 @@ def accept_order(id):
         order.shipped_at = datetime.utcnow()
         db.session.commit()
         
-        # Reduce actual stock when shipped
         for item in order.items:
             product = item.product
             previous_stock = product.stock
@@ -1322,7 +1292,6 @@ def accept_order(id):
                 order.id
             )
         
-        # Create sale record
         for item in order.items:
             sale = Sale(
                 order_id=order.id,
@@ -1340,7 +1309,6 @@ def accept_order(id):
         
         db.session.commit()
         
-        # Notify buyer and seller
         create_notification(
             user_id=order.user_id,
             title=f"Order #{order.order_number} Shipped",
@@ -1369,7 +1337,6 @@ def accept_order(id):
 @app.route('/rider/update_status/<int:id>', methods=['POST'])
 @role_required('rider')
 def update_delivery_status(id):
-    """Update delivery status (shipped -> delivered)"""
     try:
         order = Order.query.get_or_404(id)
         if order.rider_id != session['user_id']:
@@ -1382,11 +1349,9 @@ def update_delivery_status(id):
             order.status = 'delivered'
             order.delivered_at = datetime.utcnow()
             
-            # Update payment status if cash on delivery
             if order.payment_method == 'cash':
                 order.payment_status = 'paid'
             
-            # Notify buyer and seller
             create_notification(
                 user_id=order.user_id,
                 title=f"Order #{order.order_number} Delivered",
@@ -1531,26 +1496,21 @@ def seller_dashboard():
             flash('Seller not found.', 'danger')
             return redirect(url_for('index'))
         
-        # Get seller's products
         products = Product.query.filter_by(seller_id=seller.id, is_active=True).all()
         
-        # Get orders
         orders = Order.query.filter_by(seller_id=seller.id).order_by(Order.created_at.desc()).all()
         
-        # Get pending orders
         pending_orders = [o for o in orders if o.status == 'pending']
         confirmed_orders = [o for o in orders if o.status == 'confirmed']
         shipped_orders = [o for o in orders if o.status == 'shipped']
         delivered_orders = [o for o in orders if o.status == 'delivered']
         
-        # Get sales data
         today = datetime.now().date()
         today_sales = 0
         week_sales = 0
         month_sales = 0
         total_sales = 0
         
-        # Get completed sales from Sale table
         sales = Sale.query.filter_by(seller_id=seller.id, status='completed').all()
         for sale in sales:
             total_sales += sale.total_price
@@ -1561,20 +1521,20 @@ def seller_dashboard():
             if sale.sale_date.month == today.month and sale.sale_date.year == today.year:
                 month_sales += sale.total_price
         
-        # Get recent customers
         recent_customers = Customer.query.filter_by(seller_id=seller.id).order_by(Customer.last_purchase.desc()).limit(5).all()
         
-        # Get low stock products
         low_stock_products = [p for p in products if p.stock <= p.low_stock_threshold]
         
-        # Get unread messages
         unread_messages = Message.query.filter_by(receiver_id=seller.id, is_read=False).count()
         
-        # Get pending inquiries
         pending_inquiries = ProductInquiry.query.filter_by(seller_id=seller.id, status='pending').count()
         
-        # Get unread notifications
         unread_notifications = Notification.query.filter_by(user_id=seller.id, is_read=False).count()
+        
+        from sqlalchemy import func
+        top_products = db.session.query(
+            Product, func.sum(OrderItem.quantity).label('total_sold')
+        ).join(OrderItem).filter(Product.seller_id == seller.id).group_by(Product).order_by(func.sum(OrderItem.quantity).desc()).limit(5).all()
         
         stats = {
             'total_products': len(products),
@@ -1593,14 +1553,7 @@ def seller_dashboard():
             'unread_notifications': unread_notifications
         }
         
-        # Get recent orders for display
         recent_orders = orders[:5]
-        
-        # Get top products by sales
-        from sqlalchemy import func
-        top_products = db.session.query(
-            Product, func.sum(OrderItem.quantity).label('total_sold')
-        ).join(OrderItem).filter(Product.seller_id == seller.id).group_by(Product).order_by(func.sum(OrderItem.quantity).desc()).limit(5).all()
         
         return render_template('seller_dashboard.html', 
                              seller=seller,
@@ -1620,11 +1573,9 @@ def seller_dashboard():
 @app.route('/seller/orders')
 @role_required('seller')
 def seller_orders():
-    """View all orders for seller"""
     try:
         seller = User.query.get(session['user_id'])
         orders = Order.query.filter_by(seller_id=seller.id).order_by(Order.created_at.desc()).all()
-        
         return render_template('seller_orders.html', orders=orders)
     except Exception as e:
         logger.error(f"Seller orders error: {e}")
@@ -1671,7 +1622,6 @@ def add_product():
             
             final_price, rider_fee, platform_fee = calculate_price_with_fees(base_price)
             
-            # Handle image upload
             image_url = '/static/images/default-product.png'
             if 'product_image' in request.files:
                 file = request.files['product_image']
@@ -1682,7 +1632,6 @@ def add_product():
             elif request.form.get('image_url'):
                 image_url = request.form['image_url']
             
-            # Handle additional images
             additional_images = []
             if 'additional_images' in request.files:
                 files = request.files.getlist('additional_images')
@@ -1799,10 +1748,8 @@ def seller_inventory():
         seller = User.query.get(session['user_id'])
         products = Product.query.filter_by(seller_id=seller.id, is_active=True).all()
         
-        # Get inventory logs
         logs = InventoryLog.query.filter_by(seller_id=seller.id).order_by(InventoryLog.created_at.desc()).limit(50).all()
         
-        # Calculate inventory value
         total_stock_value = sum(p.price * p.stock for p in products)
         total_stock_cost = sum(p.base_price * p.stock for p in products)
         reserved_value = sum(p.price * p.reserved_stock for p in products)
@@ -1864,7 +1811,6 @@ def customer_list():
         seller = User.query.get(session['user_id'])
         customers = Customer.query.filter_by(seller_id=seller.id).order_by(Customer.total_purchases.desc()).all()
         
-        # Get customer statistics
         total_customers = len(customers)
         total_revenue = sum(c.total_purchases for c in customers)
         avg_purchase = total_revenue / total_customers if total_customers > 0 else 0
@@ -1892,7 +1838,6 @@ def customer_detail(id):
             flash('Access denied.', 'danger')
             return redirect(url_for('customer_list'))
         
-        # Get purchase history
         purchases = Sale.query.filter_by(seller_id=session['user_id'], customer_id=customer.id).order_by(Sale.sale_date.desc()).all()
         
         return render_template('customer_detail.html', customer=customer, purchases=purchases)
@@ -1952,25 +1897,23 @@ def sales_report():
         elif period == 'month':
             start_date = today.replace(day=1)
             group_by = 'day'
-        else:  # year
+        else:
             start_date = today.replace(month=1, day=1)
             group_by = 'month'
         
-        # Get sales for the period
+        from sqlalchemy import func
+        
         sales = Sale.query.filter(
             Sale.seller_id == seller.id,
             Sale.status == 'completed',
             Sale.sale_date >= start_date
         ).order_by(Sale.sale_date).all()
         
-        # Calculate totals
         total_sales = sum(s.total_price for s in sales)
         total_orders = len(sales)
         avg_order_value = total_sales / total_orders if total_orders > 0 else 0
         total_profit = sum(s.profit for s in sales if s.profit) if sales else 0
         
-        # Sales by product
-        from sqlalchemy import func
         sales_by_product = db.session.query(
             Product.name, 
             func.sum(Sale.quantity).label('quantity'),
@@ -1982,7 +1925,6 @@ def sales_report():
             Sale.sale_date >= start_date
         ).group_by(Product.id).order_by(func.sum(Sale.total_price).desc()).all()
         
-        # Sales by day
         if group_by == 'hour':
             sales_by_day = db.session.query(
                 func.date_trunc('hour', Sale.sale_date).label('date'),
@@ -2004,7 +1946,6 @@ def sales_report():
                 Sale.sale_date >= start_date
             ).group_by(func.date(Sale.sale_date)).order_by('date').all()
         
-        # Get top customers
         top_customers = db.session.query(
             Customer.name,
             Customer.phone,
@@ -2046,7 +1987,6 @@ def notifications():
         user_id = session['user_id']
         notifications = Notification.query.filter_by(user_id=user_id).order_by(Notification.created_at.desc()).all()
         
-        # Mark all as read
         for n in notifications:
             n.is_read = True
         db.session.commit()
@@ -2103,6 +2043,8 @@ def pos_dashboard():
     try:
         seller = User.query.get(session['user_id'])
         products = Product.query.filter_by(seller_id=seller.id, is_active=True).filter(Product.stock > 0).all()
+        
+        from sqlalchemy import func
         
         today = datetime.now().date()
         today_sales = OfflineSale.query.filter(
@@ -2165,7 +2107,6 @@ def pos_checkout():
             
             log_inventory_change(product.id, seller.id, previous_stock, product.stock, 'pos_sale')
             
-            # Create sale record
             sale = Sale(
                 seller_id=seller.id,
                 product_id=product.id,
@@ -2195,7 +2136,6 @@ def pos_checkout():
         )
         db.session.add(offline_sale)
         
-        # Update or create customer
         if customer_name:
             customer = Customer.query.filter_by(seller_id=seller.id, phone=customer_phone).first()
             if customer:
@@ -2216,7 +2156,6 @@ def pos_checkout():
                 )
                 db.session.add(customer)
             
-            # Link sale to customer
             for sale in Sale.query.filter_by(seller_id=seller.id).order_by(Sale.sale_date.desc()).limit(len(items)).all():
                 if not sale.customer_id:
                     sale.customer_id = customer.id
@@ -2304,7 +2243,6 @@ def send_message():
         db.session.add(msg)
         db.session.commit()
         
-        # Create notification for receiver
         sender = User.query.get(session['user_id'])
         create_notification(
             user_id=receiver_id,
@@ -2507,7 +2445,6 @@ def review_user(user_id):
             db.session.add(review)
             db.session.commit()
             
-            # Create notification for reviewed user
             create_notification(
                 user_id=user_id,
                 title=f"New Review from {session['username']}",
@@ -2625,7 +2562,6 @@ def admin_dashboard():
         products = Product.query.all()
         orders = Order.query.order_by(Order.created_at.desc()).limit(50).all()
         
-        # Statistics
         total_users = len(users)
         total_sellers = len([u for u in users if u.role == 'seller'])
         total_riders = len([u for u in users if u.role == 'rider'])
@@ -2636,10 +2572,10 @@ def admin_dashboard():
         pending_orders = Order.query.filter_by(status='pending').count()
         completed_orders = Order.query.filter_by(status='delivered').count()
         
-        # Revenue stats
-        total_revenue = db.session.query(db.func.coalesce(db.func.sum(Order.total), 0)).filter(Order.status == 'delivered').scalar() or 0
-        total_platform_fees = db.session.query(db.func.coalesce(db.func.sum(Order.platform_fee), 0)).filter(Order.status == 'delivered').scalar() or 0
-        total_rider_fees = db.session.query(db.func.coalesce(db.func.sum(Order.rider_fee), 0)).filter(Order.status == 'delivered').scalar() or 0
+        from sqlalchemy import func
+        total_revenue = db.session.query(func.coalesce(func.sum(Order.total), 0)).filter(Order.status == 'delivered').scalar() or 0
+        total_platform_fees = db.session.query(func.coalesce(func.sum(Order.platform_fee), 0)).filter(Order.status == 'delivered').scalar() or 0
+        total_rider_fees = db.session.query(func.coalesce(func.sum(Order.rider_fee), 0)).filter(Order.status == 'delivered').scalar() or 0
         
         stats = {
             'total_users': total_users,
@@ -2985,7 +2921,6 @@ def init_db():
     with app.app_context():
         db.create_all()
         
-        # Create admin if not exists
         if not User.query.filter_by(username='admin').first():
             admin = User(
                 username='admin',
@@ -2997,7 +2932,6 @@ def init_db():
             )
             db.session.add(admin)
         
-        # Create seller if not exists
         if not User.query.filter_by(username='seller1').first():
             seller = User(
                 username='seller1',
@@ -3010,7 +2944,6 @@ def init_db():
             )
             db.session.add(seller)
         
-        # Create rider if not exists
         if not User.query.filter_by(username='rider1').first():
             rider = User(
                 username='rider1',
@@ -3022,7 +2955,6 @@ def init_db():
             )
             db.session.add(rider)
         
-        # Create buyer if not exists
         if not User.query.filter_by(username='buyer1').first():
             buyer = User(
                 username='buyer1',
@@ -3034,7 +2966,6 @@ def init_db():
             )
             db.session.add(buyer)
         
-        # Create superuser
         if not User.query.filter_by(username='benedict431').first():
             superuser = User(
                 username='benedict431',
@@ -3050,7 +2981,6 @@ def init_db():
         
         db.session.commit()
         
-        # Create sample products if none exist
         if Product.query.count() == 0:
             seller = User.query.filter_by(role='seller').first() or User.query.filter_by(role='admin').first()
             
@@ -3106,7 +3036,6 @@ def init_db():
                 db.session.commit()
                 logger.info("Sample products created")
 
-# Initialize database
 with app.app_context():
     try:
         db.create_all()
