@@ -21,12 +21,10 @@
             </div>
             {% if product.additional_images and product.additional_images|length > 0 %}
             <button class="carousel-control-prev" type="button" data-bs-target="#productCarousel" data-bs-slide="prev">
-                <span class="carousel-control-prev-icon" aria-hidden="true"></span>
-                <span class="visually-hidden">Previous</span>
+                <span class="carousel-control-prev-icon"></span>
             </button>
             <button class="carousel-control-next" type="button" data-bs-target="#productCarousel" data-bs-slide="next">
-                <span class="carousel-control-next-icon" aria-hidden="true"></span>
-                <span class="visually-hidden">Next</span>
+                <span class="carousel-control-next-icon"></span>
             </button>
             {% endif %}
         </div>
@@ -60,7 +58,8 @@
         <div class="d-flex align-items-center mb-2">
             <h1 class="mb-0">{{ product.name }}</h1>
             <span class="badge bg-success ms-2">{{ product.category }}</span>
-            {% if product.stock > 0 %}
+            {% set available = product.stock - product.reserved_stock %}
+            {% if available > 0 %}
                 <span class="badge bg-success ms-2">In Stock</span>
             {% else %}
                 <span class="badge bg-danger ms-2">Out of Stock</span>
@@ -285,6 +284,9 @@
         <div class="d-flex justify-content-end mt-3">
             <button class="btn btn-outline-secondary btn-sm" onclick="shareProduct()">
                 <i class="bi bi-share"></i> Share
+            </button>
+            <button class="btn btn-outline-secondary btn-sm ms-2" onclick="window.print()">
+                <i class="bi bi-printer"></i> Print
             </button>
         </div>
     </div>
