@@ -607,17 +607,28 @@ def products():
 @app.route('/product/<int:id>')
 def product_detail(id):
     try:
+        logger.info(f"Product detail requested for ID: {id}")
         product = Product.query.get(id)
+        
         if not product:
+            logger.error(f"Product ID {id} not found")
             flash('Product not found.', 'danger')
             return redirect(url_for('products'))
         
         if not product.is_active:
+            logger.warning(f"Product ID {id} is inactive")
             flash('This product is no longer available.', 'warning')
             return redirect(url_for('products'))
         
         seller = User.query.get(product.seller_id)
-        related_products = Product.query.filter_by(category=product.category, is_active=True).filter(Product.id != product.id).limit(4).all()
+        if not seller:
+            seller = User.query.filter_by(role='seller').first() or User.query.filter_by(role='admin').first()
+        
+        related_products = Product.query.filter(
+            Product.category == product.category,
+            Product.is_active == True,
+            Product.id != product.id
+        ).limit(4).all()
         
         return render_template('product_detail.html', 
                              product=product, 
@@ -625,8 +636,25 @@ def product_detail(id):
                              related_products=related_products)
     except Exception as e:
         logger.error(f"Product detail error: {e}")
-        flash('Error loading product.', 'danger')
+        flash('Error loading product. Please try again.', 'danger')
         return redirect(url_for('products'))
+
+@app.route('/debug/products')
+def debug_products():
+    try:
+        products = Product.query.all()
+        result = []
+        for p in products:
+            result.append({
+                'id': p.id,
+                'name': p.name,
+                'is_active': p.is_active,
+                'seller_id': p.seller_id,
+                'url': url_for('product_detail', id=p.id, _external=True)
+            })
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # ===== PRODUCT INQUIRY ROUTES =====
 
@@ -738,15 +766,12 @@ def seller_dashboard():
             flash('Seller not found.', 'danger')
             return redirect(url_for('index'))
         
-        # Get seller's products
         products = Product.query.filter_by(seller_id=seller.id, is_active=True).all()
         
-        # Basic statistics
         total_products = len(products)
         total_stock = sum(p.stock for p in products) if products else 0
         low_stock_count = sum(1 for p in products if p.stock <= p.low_stock_threshold) if products else 0
         
-        # Get sales data
         today = datetime.now().date()
         today_sales = 0
         total_sales = 0
@@ -765,14 +790,12 @@ def seller_dashboard():
         except:
             pass
         
-        # Recent orders
         recent_orders = []
         try:
             recent_orders = Order.query.filter_by(seller_id=seller.id).order_by(Order.created_at.desc()).limit(5).all()
         except:
             pass
         
-        # Top products
         top_products = []
         try:
             top_products = db.session.query(
@@ -783,21 +806,18 @@ def seller_dashboard():
         except:
             pass
         
-        # Recent customers
         recent_customers = []
         try:
             recent_customers = Customer.query.filter_by(seller_id=seller.id).order_by(Customer.last_visit.desc()).limit(5).all()
         except:
             recent_customers = []
         
-        # Unread messages
         unread_messages = 0
         try:
             unread_messages = Message.query.filter_by(receiver_id=seller.id, is_read=False).count()
         except:
             pass
         
-        # Pending inquiries
         pending_inquiries = 0
         try:
             pending_inquiries = ProductInquiry.query.filter_by(seller_id=seller.id, status='pending').count()
@@ -822,7 +842,6 @@ def seller_dashboard():
                              low_stock_products=[p for p in products if p.stock <= p.low_stock_threshold],
                              top_products=top_products,
                              recent_customers=recent_customers)
-                             
     except Exception as e:
         logger.error(f"Seller dashboard error: {str(e)}")
         flash('Error loading dashboard. Please try again.', 'danger')
@@ -868,7 +887,6 @@ def add_product():
             
             final_price, rider_fee, platform_fee = calculate_price_with_fees(base_price)
             
-            # Handle image upload
             image_url = '/static/images/default-product.png'
             if 'product_image' in request.files:
                 file = request.files['product_image']
@@ -879,7 +897,6 @@ def add_product():
             elif request.form.get('image_url'):
                 image_url = request.form['image_url']
             
-            # Handle additional images
             additional_images = []
             if 'additional_images' in request.files:
                 files = request.files.getlist('additional_images')
@@ -912,7 +929,6 @@ def add_product():
             
             flash(f'Product added successfully! Final price: Kes{final_price}', 'success')
             return redirect(url_for('seller_products'))
-            
         except Exception as e:
             db.session.rollback()
             logger.error(f"Add product error: {e}")
@@ -962,7 +978,6 @@ def edit_product(id):
             
             flash('Product updated successfully!', 'success')
             return redirect(url_for('seller_products'))
-            
         except Exception as e:
             db.session.rollback()
             logger.error(f"Edit product error: {e}")
@@ -1154,7 +1169,6 @@ def pos_checkout():
         )
         db.session.add(offline_sale)
         
-        # Update or create customer
         if customer_name:
             try:
                 customer = Customer.query.filter_by(seller_id=seller.id, phone=customer_phone).first()
@@ -1185,7 +1199,6 @@ def pos_checkout():
             'receipt_number': receipt_number,
             'total': total
         })
-        
     except Exception as e:
         db.session.rollback()
         logger.error(f"POS checkout error: {e}")
@@ -1539,7 +1552,6 @@ def checkout():
             
             flash('Order placed successfully!', 'success')
             return redirect(url_for('order_detail', id=order.id))
-            
         except Exception as e:
             db.session.rollback()
             logger.error(f"Checkout error: {e}")
